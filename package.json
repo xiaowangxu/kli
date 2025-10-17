@@ -1,0 +1,24 @@
+{
+	"name": "kli",
+	"version": "1.0.0",
+	"description": "",
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"type": "module",
+	"main": "dist/index.cjs",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"scripts": {
+		"dev": "tsx watch src/dev.ts",
+		"build": "tsup",
+		"start": "tsx src/dev.ts",
+		"clean": "rm -rf dist"
+	},
+	"devDependencies": {
+		"@types/node": "^24.8.0",
+		"tsup": "^8.5.0",
+		"tsx": "^4.20.6",
+		"typescript": "^5.9.3"
+	}
+}
