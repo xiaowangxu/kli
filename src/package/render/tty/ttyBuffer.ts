@@ -4,11 +4,12 @@ import { ANSI } from "./ttyRenderer.js";
 
 export class TTyBufferPixel {
 
-    public color: Color | undefined;
-    public bg_color: Color | undefined;
-    public bold: boolean = false;
-    public italic: boolean = false;
-    public underline: boolean = false;
+    protected color: Color | undefined;
+    protected bg_color: Color | undefined;
+    protected bold: boolean = false;
+    protected italic: boolean = false;
+    protected underline: boolean = false;
+    protected span: number = 0;
 
     private content?: string;
 
@@ -48,12 +49,21 @@ export class TTyBufferPixel {
         this.underline = v ?? false;
     }
 
-    public set_content(char?: string) {
+    public set_content(char?: string, span?: number) {
         this.content = (char === undefined || char.length === 0) ? undefined : char;
+        this.span = Math.max(1, span ?? 1);
+    }
+
+    public get_span() {
+        return this.span;
+    }
+
+    public get_styled_text_content() {
+        return `${ANSI.reset}${this.color ? ANSI.rgb(this.color) : ANSI.none}${this.bg_color ? ANSI.bg_rgb(this.bg_color) : ANSI.none}${this.bold ? ANSI.bold : ANSI.none}${this.italic ? ANSI.italic : ANSI.none}${this.underline ? ANSI.underline : ANSI.none}${this.get_unstyled_text_content()}${ANSI.reset}`;
     }
 
     public get_unstyled_text_content() {
-        return `${ANSI.reset}${this.color ? ANSI.rgb(this.color) : ANSI.none}${this.bg_color ? ANSI.bg_rgb(this.bg_color) : ANSI.none}${this.bold ? ANSI.bold : ANSI.none}${this.italic ? ANSI.italic : ANSI.none}${this.underline ? ANSI.underline : ANSI.none}${this.content ?? ' '}${ANSI.reset}`;
+        return this.content ?? ' ';
     }
 }
 
@@ -123,11 +133,12 @@ export class TTyBuffer {
         }
     }
 
-    public set_char(x: number, y: number, width?: number, height?: number, char?: string, text_style?: PixelTextStyle, clear_style?: boolean) {
+    public set_char(x: number, y: number, width?: number, height?: number, char?: string, span?: number, text_style?: PixelTextStyle, clear_style?: boolean) {
         const set_style = clear_style || text_style !== undefined;
         if (width === undefined && height === undefined || width === 1 && height === 1) {
+            if (x >= this._width || y >= this._height) return;
             const pixel = this.pixels[y][x];
-            pixel.set_content(char);
+            pixel.set_content(char, span);
             if (set_style) {
                 this.set_pixel_text_style(pixel, text_style, clear_style);
             }
@@ -138,33 +149,10 @@ export class TTyBuffer {
             for (let i = 0; i < width && (x + i) < this._width; i++) {
                 for (let j = 0; j < height && (y + j) < this._height; j++) {
                     const pixel = this.pixels[y + j][x + i];
-                    pixel.set_content(char);
+                    pixel.set_content(char, span);
                     if (set_style) {
                         this.set_pixel_text_style(pixel, text_style, clear_style);
                     }
-                }
-            }
-        }
-    }
-
-    public set_string(x: number, y: number, str: string, text_style?: PixelTextStyle, clear_style?: boolean) {
-        const set_style = clear_style || text_style !== undefined;
-        const chars = [...str];
-        const width = chars.length;
-        if (width === 0) return;
-        if (width === 1) {
-            const pixel = this.pixels[y][x];
-            pixel.set_content(chars[0]);
-            if (set_style) {
-                this.set_pixel_text_style(pixel, clear_style ? undefined : text_style);
-            }
-        }
-        else {
-            for (let i = 0; i < width && (x + i) < this._width; i++) {
-                const pixel = this.pixels[y][x + i];
-                pixel.set_content(chars[i]);
-                if (set_style) {
-                    this.set_pixel_text_style(pixel, clear_style ? undefined : text_style);
                 }
             }
         }
@@ -194,7 +182,7 @@ export class TTyBuffer {
     }
 
     public toString() {
-        return this.pixels.map(row => row.map(p => p.get_unstyled_text_content()).join('') + ANSI.reset).join('\n');
+        return this.pixels.map(row => row.map(p => p.get_styled_text_content()).join('') + ANSI.reset).join('\n');
     }
 
 }

@@ -46,6 +46,13 @@ export type BorderType = {
     left: string,
 }
 
+export function is_double_width_char(char: string) {
+    const code = char.charCodeAt(0);
+    return (code >= 0x4e00 && code <= 0x9fff) ||     // 中日韩统一表意文字
+        (code >= 0x3000 && code <= 0x303f) ||        // CJK 符号和标点
+        (code >= 0xff00 && code <= 0xffef);          // 全角字符
+}
+
 export class TTyRenderer implements Renderer {
 
     protected readonly stream: WriteStream;
@@ -84,15 +91,15 @@ export class TTyRenderer implements Renderer {
     }
 
     public fill(x: number, y: number, width: number, height: number, bg_color?: Color) {
-        this.draw_char(x, y, width, height, undefined, bg_color === undefined ? undefined : { bg_color }, true);
+        this.draw_char(x, y, width, height, undefined, undefined, bg_color === undefined ? undefined : { bg_color }, true);
     }
 
     public draw_text_style(x: number, y: number, width: number, height: number, text_style?: PixelTextStyle, clear_style?: boolean) {
         this.buffer.set_text_style(x, y, width, height, text_style, clear_style);
     }
 
-    public draw_char(x: number, y: number, width?: number, height?: number, char?: string, text_style?: PixelTextStyle, clear_style?: boolean) {
-        this.buffer.set_char(x, y, width, height, char, text_style, clear_style);
+    public draw_char(x: number, y: number, width?: number, height?: number, char?: string, span: number = 1, text_style?: PixelTextStyle, clear_style?: boolean) {
+        this.buffer.set_char(x, y, width, height, char, span, text_style, clear_style);
     }
 
     public draw_string(x: number, y: number, str: string, text_style?: PixelTextStyle, clear_style?: boolean) {
@@ -100,16 +107,18 @@ export class TTyRenderer implements Renderer {
         const width = chars.length;
         if (width === 0) return;
         if (width === 1) {
-            this.draw_char(x, y, 1, 1, chars[0], text_style, clear_style);
+            this.draw_char(x, y, 1, 1, chars[0], is_double_width_char(chars[0]) ? 2 : 1, text_style, clear_style);
         }
         else {
             for (let i = 0; i < width && (x + i) < this.width; i++) {
-                this.draw_char(x + i, y, 1, 1, chars[i], text_style, clear_style);
+                this.draw_char(x + i, y, 1, 1, chars[i], is_double_width_char(chars[i]) ? 2 : 1, text_style, clear_style);
+                if (is_double_width_char(chars[i])) x++;
             }
         }
     }
 
-    public draw_box_border(x: number, y: number, width: number, height: number, border_type: BorderType, text_style?: PixelTextStyle, clear_style?: boolean) {
+    public draw_box_border(rect: Rect, border_type: BorderType, text_style?: PixelTextStyle, clear_style?: boolean) {
+        const { x, y, width, height } = rect;
         const {
             top_left,
             top,
@@ -120,14 +129,14 @@ export class TTyRenderer implements Renderer {
             bottom_right,
             left,
         } = border_type;
-        this.draw_char(x, y, undefined, undefined, top_left, text_style, clear_style);
-        this.draw_char(x + width - 1, y, undefined, undefined, top_right, text_style, clear_style);
-        this.draw_char(x + width - 1, y + height - 1, undefined, undefined, bottom_right, text_style, clear_style);
-        this.draw_char(x, y + height - 1, undefined, undefined, bottom_left, text_style, clear_style);
-        this.draw_char(x + 1        , y             , width - 2, 1         , top   , text_style, clear_style);
-        this.draw_char(x + 1        , y + height - 1, width - 2, 1         , bottom, text_style, clear_style);
-        this.draw_char(x            , y + 1         , 1        , height - 2, left  , text_style, clear_style);
-        this.draw_char(x + width - 1, y + 1         , 1        , height - 2, right , text_style, clear_style);
+        this.draw_char(x, y, undefined, undefined, top_left, undefined, text_style, clear_style);
+        this.draw_char(x + width - 1, y, undefined, undefined, top_right, undefined, text_style, clear_style);
+        this.draw_char(x + width - 1, y + height - 1, undefined, undefined, bottom_right, undefined, text_style, clear_style);
+        this.draw_char(x, y + height - 1, undefined, undefined, bottom_left, undefined, text_style, clear_style);
+        this.draw_char(x + 1, y, width - 2, 1, top, undefined, text_style, clear_style);
+        this.draw_char(x + 1, y + height - 1, width - 2, 1, bottom, undefined, text_style, clear_style);
+        this.draw_char(x, y + 1, 1, height - 2, left, undefined, text_style, clear_style);
+        this.draw_char(x + width - 1, y + 1, 1, height - 2, right, undefined, text_style, clear_style);
     }
 
     render(target: Rect, clear_screen: boolean, clear_empty: boolean, clear_screen_color?: Color, clear_empty_color?: Color): void | RenderReady {
@@ -159,8 +168,9 @@ export class TTyRenderer implements Renderer {
         const more_width = ' '.repeat(render_rect.width - content_rect.width);
         const more_height = ' '.repeat(render_rect.width);
 
-        clear_empty_color ??= Color.of(50, 50, 50);
+        clear_empty_color ??= Color.of(0, 0, 0);
         let str = ANSI.move_to(render_rect.x, render_rect.y);
+        let skip_span = 1;
         for (const { x, y, pixel, newline, endline } of this.buffer.iterate(content_rect.x, content_rect.y, content_rect.width, content_rect.height)) {
             if (newline) {
                 str += ANSI.move_to(
@@ -169,10 +179,25 @@ export class TTyRenderer implements Renderer {
                 );
                 // console.log(y, render_rect.y + y + render_offset_y - content_rect.y);
             }
-            str += pixel === undefined ? `${ANSI.reset}${ANSI.bg_rgb(clear_empty_color)} ` : pixel.get_unstyled_text_content();
+            if (pixel === undefined) {
+                str += `${ANSI.reset}${ANSI.bg_rgb(clear_empty_color)} `;
+                skip_span = 0;
+            }
+            else {
+                const styled_char = pixel.get_styled_text_content();
+                const span = pixel.get_span();
+                if (skip_span > 1) {
+                    skip_span--;
+                }
+                else {
+                    str += styled_char;
+                    skip_span = span;
+                }
+            }
             if (endline) {
                 if (has_more_x) str += `${ANSI.reset}${ANSI.bg_rgb(clear_empty_color)}${more_width}`;
                 str += ANSI.reset;
+                skip_span = 1;
             }
         }
         if (has_more_y) {

@@ -1,53 +1,146 @@
-import Yoga, { Node as YogaNode, Align as YogaAlign, Display as YogaDisplay } from "yoga-layout";
+import Yoga, { Wrap as YogaWrap, PositionType as YogaPositionType, Node as YogaNode, Align as YogaAlign, Justify as YogaJustify, FlexDirection as YogaFlexDirection, Display as YogaDisplay, Gutter as YogaGutter, Edge as YogaEdge, BoxSizing as YogaBoxSizing } from "yoga-layout";
 import { Node, NodeWithChildren } from "../node/node.js";
 import DefaultLayoutConfig from "./config.js";
+import { Rect } from "../util/rect.js";
 
 export interface LayoutLeaf {
     readonly layout_node: YogaNode;
 }
 
+type YogaValue = number | `${number}%` | undefined;
+type YogaValueAuto = number | 'auto' | `${number}%` | undefined;
+
 export interface LayoutNode extends LayoutLeaf {
-    get align_content(): YogaAlign;
-    get align_items(): YogaAlign;
-    get aspect_ratio(): number;
-    get display(): YogaDisplay;
+    set align_content(v: YogaAlign);
+    set align_items(v: YogaAlign);
+    set justify_content(v: YogaJustify);
+    set aspect_ratio(v: number);
+    set display(v: YogaDisplay);
+    set gap(v: YogaValue);
+    set gap_column(v: YogaValue);
+    set gap_row(v: YogaValue);
+    set flex_direction(v: YogaFlexDirection);
+    set flex_basis(v: YogaValueAuto);
+    set flex_grow(v: number);
+    set flex_shrink(v: number);
+    set flex_wrap(v: YogaWrap);
+    set top(v: YogaValueAuto);
+    set left(v: YogaValueAuto);
+    set bottom(v: YogaValueAuto);
+    set right(v: YogaValueAuto);
+    set width(v: YogaValueAuto);
+    set min_width(v: YogaValue);
+    set max_width(v: YogaValue);
+    set height(v: YogaValue);
+    set min_height(v: YogaValue);
+    set max_height(v: YogaValue);
+    set margin(v: YogaValueAuto);
+    set margin_top(v: YogaValueAuto);
+    set margin_right(v: YogaValueAuto);
+    set margin_bottom(v: YogaValueAuto);
+    set margin_left(v: YogaValueAuto);
+    set margin_start(v: YogaValueAuto);
+    set margin_end(v: YogaValueAuto);
+    set margin_horizontal(v: YogaValueAuto);
+    set margin_vertical(v: YogaValueAuto);
+    set padding(v: YogaValue);
+    set padding_top(v: YogaValue);
+    set padding_right(v: YogaValue);
+    set padding_bottom(v: YogaValue);
+    set padding_left(v: YogaValue);
+    set padding_start(v: YogaValue);
+    set padding_end(v: YogaValue);
+    set padding_horizontal(v: YogaValue);
+    set padding_vertical(v: YogaValue);
+    set position(v: YogaPositionType);
+    set border(v: number | undefined);
+    set border_top(v: number | undefined);
+    set border_right(v: number | undefined);
+    set border_bottom(v: number | undefined);
+    set border_left(v: number | undefined);
+    set border_start(v: number | undefined);
+    set border_end(v: number | undefined);
+    set border_horizontal(v: number | undefined);
+    set border_vertical(v: number | undefined);
+    set box_sizing(v: YogaBoxSizing);
 }
 
 export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | LayoutNode)> extends NodeWithChildren<Children> implements LayoutNode {
 
     public readonly layout_node: YogaNode = Yoga.Node.createWithConfig(DefaultLayoutConfig);
 
-    get align_content() { return this.layout_node.getAlignContent(); }
-    get align_items() { return this.layout_node.getAlignItems(); }
-    get justify_content() { return this.layout_node.getJustifyContent(); }
-    get aspect_ratio() { return this.layout_node.getAspectRatio(); }
-    get display() { return this.layout_node.getDisplay(); }
-    get flex_direction() { return this.layout_node.getFlexDirection(); }
-    get flex_basis() { return this.layout_node.getFlexBasis(); }
-    get flex_grow() { return this.layout_node.getFlexGrow(); }
-    get flex_shrink() { return this.layout_node.getFlexShrink(); }
-    get flex_wrap() { return this.layout_node.getFlexWrap(); }
-    get top() { return this.layout_node.getPosition(Yoga.EDGE_TOP); }
-    get left() { return this.layout_node.getPosition(Yoga.EDGE_LEFT); }
-    get bottom() { return this.layout_node.getPosition(Yoga.EDGE_BOTTOM); }
-    get right() { return this.layout_node.getPosition(Yoga.EDGE_RIGHT); }
-    get width() { return this.layout_node.getWidth(); }
-    get min_width() { return this.layout_node.getMinWidth(); }
-    get max_width() { return this.layout_node.getMaxWidth(); }
-    get height() { return this.layout_node.getHeight(); }
-    get min_height() { return this.layout_node.getMinHeight(); }
-    get max_height() { return this.layout_node.getMaxHeight(); }
-    get margin() { return this.layout_node.getMargin(Yoga.EDGE_ALL); }
-    get margin_top() { return this.layout_node.getMargin(Yoga.EDGE_TOP); }
-    get margin_right() { return this.layout_node.getMargin(Yoga.EDGE_RIGHT); }
-    get margin_bottom() { return this.layout_node.getMargin(Yoga.EDGE_BOTTOM); }
-    get margin_left() { return this.layout_node.getMargin(Yoga.EDGE_LEFT); }
-    get padding() { return this.layout_node.getPadding(Yoga.EDGE_ALL); }
-    get padding_top() { return this.layout_node.getPadding(Yoga.EDGE_TOP); }
-    get padding_right() { return this.layout_node.getPadding(Yoga.EDGE_RIGHT); }
-    get padding_bottom() { return this.layout_node.getPadding(Yoga.EDGE_BOTTOM); }
-    get padding_left() { return this.layout_node.getPadding(Yoga.EDGE_LEFT); }
-    get position() { return this.layout_node.getPositionType(); }
+    set align_content(v: YogaAlign) { this.layout_node.setAlignContent(v); }
+    set align_items(v: YogaAlign) { this.layout_node.setAlignItems(v); }
+    set justify_content(v: YogaJustify) { this.layout_node.setJustifyContent(v); }
+    set aspect_ratio(v: number) { this.layout_node.setAspectRatio(v); }
+    set display(v: YogaDisplay) { this.layout_node.setDisplay(v); }
+    set gap(v: YogaValue) { this.layout_node.setGap(Yoga.GUTTER_ALL, v); }
+    set gap_column(v: YogaValue) { this.layout_node.setGap(Yoga.GUTTER_COLUMN, v); }
+    set gap_row(v: YogaValue) { this.layout_node.setGap(Yoga.GUTTER_ROW, v); }
+    set flex_direction(v: YogaFlexDirection) { this.layout_node.setFlexDirection(v); }
+    set flex_basis(v: YogaValueAuto) { this.layout_node.setFlexBasis(v); }
+    set flex_grow(v: number) { this.layout_node.setFlexGrow(v); }
+    set flex_shrink(v: number) { this.layout_node.setFlexShrink(v); }
+    set flex_wrap(v: YogaWrap) { this.layout_node.setFlexWrap(v); }
+    set top(v: YogaValueAuto) { v === 'auto' ? this.layout_node.setPositionAuto(Yoga.EDGE_TOP) : this.layout_node.setPosition(Yoga.EDGE_TOP, v); }
+    set left(v: YogaValueAuto) { v === 'auto' ? this.layout_node.setPositionAuto(Yoga.EDGE_LEFT) : this.layout_node.setPosition(Yoga.EDGE_LEFT, v); }
+    set bottom(v: YogaValueAuto) { v === 'auto' ? this.layout_node.setPositionAuto(Yoga.EDGE_BOTTOM) : this.layout_node.setPosition(Yoga.EDGE_BOTTOM, v); }
+    set right(v: YogaValueAuto) { v === 'auto' ? this.layout_node.setPositionAuto(Yoga.EDGE_RIGHT) : this.layout_node.setPosition(Yoga.EDGE_RIGHT, v); }
+    set width(v: YogaValueAuto) { this.layout_node.setWidth(v); }
+    set min_width(v: YogaValue) { this.layout_node.setMinWidth(v); }
+    set max_width(v: YogaValue) { this.layout_node.setMaxWidth(v); }
+    set height(v: YogaValue) { this.layout_node.setHeight(v); }
+    set min_height(v: YogaValue) { this.layout_node.setMinHeight(v); }
+    set max_height(v: YogaValue) { this.layout_node.setMaxHeight(v); }
+    set margin(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_ALL, v); }
+    set margin_top(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_TOP, v); }
+    set margin_left(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_LEFT, v); }
+    set margin_bottom(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_BOTTOM, v); }
+    set margin_right(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_RIGHT, v); }
+    set margin_start(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_START, v); }
+    set margin_end(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_END, v); }
+    set margin_horizontal(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_HORIZONTAL, v); }
+    set margin_vertical(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_VERTICAL, v); }
+    set padding(v: YogaValue) { this.layout_node.setPadding(Yoga.EDGE_ALL, v); }
+    set padding_top(v: YogaValue) { this.layout_node.setPadding(Yoga.EDGE_TOP, v); }
+    set padding_left(v: YogaValue) { this.layout_node.setPadding(Yoga.EDGE_LEFT, v); }
+    set padding_bottom(v: YogaValue) { this.layout_node.setPadding(Yoga.EDGE_BOTTOM, v); }
+    set padding_right(v: YogaValue) { this.layout_node.setPadding(Yoga.EDGE_RIGHT, v); }
+    set padding_start(v: YogaValue) { this.layout_node.setPadding(Yoga.EDGE_START, v); }
+    set padding_end(v: YogaValue) { this.layout_node.setPadding(Yoga.EDGE_END, v); }
+    set padding_horizontal(v: YogaValue) { this.layout_node.setPadding(Yoga.EDGE_HORIZONTAL, v); }
+    set padding_vertical(v: YogaValue) { this.layout_node.setPadding(Yoga.EDGE_VERTICAL, v); }
+    set position(v: YogaPositionType) { this.layout_node.setPositionType(v); }
+    set border(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_ALL, v); }
+    set border_top(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_TOP, v); }
+    set border_left(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_LEFT, v); }
+    set border_bottom(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_BOTTOM, v); }
+    set border_right(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_RIGHT, v); }
+    set border_start(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_START, v); }
+    set border_end(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_END, v); }
+    set border_horizontal(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_HORIZONTAL, v); }
+    set border_vertical(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_VERTICAL, v); }
+    set box_sizing(v: YogaBoxSizing) { this.layout_node.setBoxSizing(v); }
+
+    public get_rect(): Rect {
+        if (this.parent === undefined || !(this.parent instanceof LayoutContainer)) {
+            return Rect.of(
+                this.layout_node.getComputedLeft(),
+                this.layout_node.getComputedTop(),
+                this.layout_node.getComputedWidth(),
+                this.layout_node.getComputedHeight(),
+            );
+        }
+        else {
+            const { x, y } = this.parent.get_rect();
+            return Rect.of(
+                x + this.layout_node.getComputedLeft(),
+                y + this.layout_node.getComputedTop(),
+                this.layout_node.getComputedWidth(),
+                this.layout_node.getComputedHeight(),
+            );
+        }
+    }
 
     public dispose(recusive: boolean): void {
         if (recusive) {
