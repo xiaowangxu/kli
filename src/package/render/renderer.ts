@@ -1,15 +1,14 @@
+import { Color } from "../util/color.js";
+import { Rect } from "../util/rect.js";
+
 export type RenderReady = Promise<void>;
 
 export interface Renderer {
-    get width(): number;
-    get height(): number;
-    on_resize(fn: (width: number, height: number) => void): number;
-    cancel_resize(fn: number): void;
-    begin_render(): void | RenderReady;
+    init(): void | RenderReady;
+    dispose(): void | RenderReady;
+
+    begin_render(width: number, height: number): void;
+    set_viewport(viewport: Rect): void;
+    render(target: Rect, clear_screen: boolean, clear_empty: boolean, clear_screen_color?: Color, clear_empty_color?: Color): void;
     end_render(): void | RenderReady;
-    clear(): void | RenderReady;
-    move_to(x: number, y: number): void | RenderReady;
-    clear_rect(x: number, y: number, width: number, height: number): void | RenderReady;
-    write(text: Uint8Array): void | RenderReady;
-    write(text: string, encoding?: BufferEncoding): void | RenderReady;
 }

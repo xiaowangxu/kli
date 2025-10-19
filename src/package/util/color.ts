@@ -28,6 +28,11 @@ export class Color {
         return `#${this.r.toString(16).padStart(2, '0')}${this.g.toString(16).padStart(2, '0')}${this.b.toString(16).padStart(2, '0')}${this.a.toString(16).padStart(2, '0')}`;
     }
 
+    public copy(color: Color) {
+        this.color = color.color;
+        return this;
+    }
+
     static of(r: number, g: number, b: number, a: number = 255) {
         const color = new Color();
         color.r = r;

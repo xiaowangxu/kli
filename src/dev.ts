@@ -1,52 +1,36 @@
-import Yoga from 'yoga-layout-prebuilt';
-import { Container, Text, TextContainer, TextContent } from './index.js';
-import { Color } from './package/util/color.js';
-import { TTyRenderer } from './package/render/ttyRenderer.js';
-import { sleep } from './package/util/common.js';
+import { TTyRenderer } from "./package/render/tty/ttyRenderer.js";
+import { Color } from "./package/util/color.js";
+import { Rect } from "./package/util/rect.js";
 
-function create() {
-    const cot = new Container();
-    const txt_cot = new TextContainer();
-    const txt = new Text();
-    const span0 = new TextContent('Hello');
-    const span1 = new TextContent(' ');
-    const span2 = new TextContent('Kli');
-    cot.add_child(txt_cot);
-    txt_cot.set_text(txt);
-    txt.add_child(span0);
-    txt.add_child(span1);
-    txt.add_child(span2);
-    return cot;
+let time = 0;
+
+const renderer = new TTyRenderer(process.stdout);
+renderer.init();
+function render() {
+    renderer.begin_render(process.stdout.columns, process.stdout.rows);
+    renderer.set_viewport(Rect.of(0, 0, process.stdout.columns, process.stdout.rows));
+    renderer.fill(0, 0, process.stdout.columns, process.stdout.rows, Color.of(0, 120, 50));
+    renderer.fill(Math.floor(time), 0, 15, 4, Color.of(255, 120, 0));
+    renderer.draw_box_border(Math.floor(time), 0, 15, 4, {
+        top_left: "╭",
+        top: "─",
+        top_right: "╮",
+        right: "│",
+        bottom_left: "╰",
+        bottom: "─",
+        bottom_right: "╯",
+        left: "│"
+    }, { color: Color.of(190, 190, 190), bg_color: Color.of(0, 120, 50) }, true);
+    renderer.draw_string(Math.floor(time) + 2, 1, 'Hello Wrold', { color: Color.of(255, 160, 0) });
+    renderer.draw_string(Math.floor(time) + 2, 2, 'from Kli', { color: Color.of(255, 255, 255), bold: true, italic: true, underline: true });
+    renderer.render(Rect.of(0, 0, process.stdout.columns, process.stdout.rows), false, false);
+    renderer.end_render();
 }
 
-const cot = new Container();
-cot.add_child(create());
-cot.add_child(create());
+render();
 
-cot.layout_node.calculateLayout(100, 100, Yoga.DIRECTION_LTR);
-
-console.log(cot.get_unstyled_text_content());
-console.log(
-    cot.layout_node.getComputedLeft(),
-    cot.layout_node.getComputedLeft(),
-    cot.layout_node.getComputedWidth(),
-    cot.layout_node.getComputedHeight(),
-);
-console.log(Color.of(255, 212, 0).hex);
-
-console.log(">>>>>> clearing");
-
-function clear() {
-    setTimeout(async () => {
-        const tty = new TTyRenderer(process.stdout);
-        tty.begin_render();
-        for (let i = 0; i < 100; i++) {
-            await (tty.clear());
-            await (tty.write(`cleared ${i}`));
-            await sleep(33);
-        }
-        tty.end_render();
-    }, 1000);
-}
-
-clear();
+setInterval(() => {
+    render();
+    time += 0.1;
+    time %= 20;
+}, 16);

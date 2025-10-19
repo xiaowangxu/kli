@@ -1,4 +1,4 @@
-import Yoga, { YogaNode } from "yoga-layout-prebuilt";
+import Yoga, { Node as YogaNode } from "yoga-layout";
 import { LayoutContainer, LayoutLeaf } from "../layout/layout.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 import { Text } from "./text.js";
@@ -30,7 +30,7 @@ export class Container extends LayoutContainer<Container | TextContainer> {
 }
 
 export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
-    
+
     public readonly layout_node: YogaNode = Yoga.Node.createWithConfig(DefaultLayoutConfig);
 
     parent: NodeWithChild<Node> | undefined;

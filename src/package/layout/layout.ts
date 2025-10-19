@@ -1,4 +1,4 @@
-import Yoga, { YogaNode, YogaAlign, YogaDisplay } from "yoga-layout-prebuilt";
+import Yoga, { Node as YogaNode, Align as YogaAlign, Display as YogaDisplay } from "yoga-layout";
 import { Node, NodeWithChildren } from "../node/node.js";
 import DefaultLayoutConfig from "./config.js";
 
