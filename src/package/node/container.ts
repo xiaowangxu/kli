@@ -3,24 +3,103 @@ import { LayoutContainer, LayoutLeaf } from "../layout/layout.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 import { Text } from "./text.js";
 import DefaultLayoutConfig from "../layout/config.js";
+import { Renderer } from "../render/renderer.js";
+import { Color } from "../util/color.js";
+import { BorderStyle, BorderType } from "../style/border_style.js";
+import { Scene } from "../scene/scene.js";
+import { Rect } from "../util/rect.js";
+import { Position } from "../util/position.js";
+import { BoxStyle } from "../style/box_style.js";
+import { execute_shader, Shader } from "../style/shader.js";
 
-export class Container extends LayoutContainer<Container | TextContainer> {
+export enum Overflow {
+    Visible,
+    Hidden,
+}
+
+export class Container extends LayoutContainer<Container | TextContainer> implements BorderStyle, BoxStyle {
+
+    protected _border_color: Color | undefined;
+    protected _border_type: BorderType | undefined;
+    protected _bg_color: Color | undefined;
+    protected _bg_shader: Shader | undefined;
+    public readonly offset: Position = Position.of(0, 0);
+
+    get border_color(): Color | undefined {
+        return this._border_color;
+    }
+    set border_color(v: Color | undefined) {
+        this._border_color = v;
+        this.get_scene()?.notify_change();
+    }
+    get border_type(): BorderType | undefined {
+        return this._border_type;
+    }
+    set border_type(v: BorderType | undefined) {
+        this._border_type = v;
+        this.get_scene()?.notify_change();
+    }
+    get bg_color() {
+        return this._bg_color;
+    }
+    set bg_color(v: Color | undefined) {
+        this._bg_color = v;
+        this.get_scene()?.notify_change();
+    }
+    get bg_shader() {
+        return this._bg_shader;
+    }
+    set bg_shader(v: Shader | undefined) {
+        this._bg_shader = v;
+        this.get_scene()?.notify_change();
+    }
 
     public readonly children: (Container | TextContainer)[] = [];
+
+    protected _overflow: Overflow = Overflow.Visible;
+
+    set overflow(v: Overflow) {
+        this._overflow = v;
+    }
 
     public get_unstyled_text_content(): string {
         return this.children.map(c => c.get_unstyled_text_content()).join('\n');
     }
 
-    protected on_child_addeded(node: Container | TextContainer): void {
-        this.layout_node.insertChild(node.layout_node, this.layout_node.getChildCount());
+    public get_scene(): Scene | undefined {
+        return this.parent?.get_scene();
     }
-    protected on_child_removed(node: Container | TextContainer): void {
-        this.layout_node.removeChild(node.layout_node);
+
+    private count: number = 0;
+    public draw(render: Renderer): void {
+        const left = this.layout_node.getComputedBorder(Yoga.EDGE_LEFT);
+        const top = this.layout_node.getComputedBorder(Yoga.EDGE_TOP);
+        const right = this.layout_node.getComputedBorder(Yoga.EDGE_RIGHT);
+        const bottom = this.layout_node.getComputedBorder(Yoga.EDGE_BOTTOM);
+        const rect = this.get_rect();
+        const bg_rect = Rect.of(rect.x + left, rect.y + top, rect.width - left - right, rect.height - top - bottom);
+
+        if (this.bg_color !== undefined) render.fill(bg_rect, this.bg_color);
+
+        if (this.bg_shader !== undefined) {
+            execute_shader(this.bg_shader, bg_rect, (x, y, color) => {
+                render.draw_char(x, y, 1, 1, color?.content, 1, color, false);
+            });
+        };
+
+        if (this.border_type !== undefined) render.draw_box_border(rect, this.border_type, { color: this.border_color }, false);
+
+        render.draw_string(rect.x + 2, rect.y, ` ${this.offset.x}x${this.offset.y} c: ${this.count++} `);
+
+        if (this._overflow === Overflow.Hidden) render.push_mask(this.get_content_rect());
+        for (const child of this.children) {
+            child.draw(render);
+        }
+        if (this._overflow === Overflow.Hidden) render.pop_mask();
     }
-    protected on_child_moved(node: Container | TextContainer, from: number, to: number): void {
-        this.layout_node.removeChild(node.layout_node);
-        this.layout_node.insertChild(node.layout_node, to);
+
+    public get_inner_offset(): Position {
+        return this.offset;
     }
 
     public dispose(recusive: boolean): void {
@@ -38,7 +117,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
 
     constructor() {
         this.layout_node.setMeasureFunc((width: number, width_mode: YogaMeasureMode, height: number, height_mode: YogaMeasureMode) => {
-            
+
             const context = this.get_unstyled_text_content();
 
             let measured_width = 0;
@@ -80,8 +159,9 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         return this.text?.get_unstyled_text_content?.() ?? '';
     }
 
-    public notifiy_text_change() {
+    public notify_text_change() {
         this.layout_node.markDirty();
+        this.get_scene()?.notify_change();
     }
 
     public set_text(text: Text) {
@@ -91,11 +171,16 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         }
         text.parent = this;
         this.text = text;
+        this.notify_text_change();
     }
 
     public clear_text(): boolean {
         if (this.text === undefined) return false;
-        return this.remove_child(this.text);
+        if (this.remove_child(this.text)) {
+            this.notify_text_change();
+            return true;
+        }
+        return false;
     }
 
     public remove_child(node: Text): boolean {
@@ -105,6 +190,65 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
             return true;
         }
         return false;
+    }
+
+    public get_scene(): Scene | undefined {
+        return this.parent?.get_scene();
+    }
+
+    public draw(render: Renderer): void {
+        const { x, y } = this.get_content_rect();
+        render.draw_string(x, y, this.get_unstyled_text_content(), { color: Color.of(255, 255, 255) }, false);
+    }
+
+    public get_rect(): Rect {
+        if (this.parent === undefined || !(this.parent instanceof LayoutContainer)) {
+            return Rect.of(
+                this.layout_node.getComputedLeft(),
+                this.layout_node.getComputedTop(),
+                this.layout_node.getComputedWidth(),
+                this.layout_node.getComputedHeight(),
+            );
+        }
+        else {
+            const { x, y } = this.parent.get_rect();
+            const { x: offset_x, y: offset_y } = this.parent.get_inner_offset();
+            return Rect.of(
+                x + this.layout_node.getComputedLeft() + offset_x,
+                y + this.layout_node.getComputedTop() + offset_y,
+                this.layout_node.getComputedWidth(),
+                this.layout_node.getComputedHeight(),
+            );
+        }
+    }
+
+    public get_content_rect(): Rect {
+        const left = this.layout_node.getComputedBorder(Yoga.EDGE_LEFT) + this.layout_node.getComputedPadding(Yoga.EDGE_LEFT);
+        const top = this.layout_node.getComputedBorder(Yoga.EDGE_TOP) + this.layout_node.getComputedPadding(Yoga.EDGE_TOP);
+        const right = this.layout_node.getComputedBorder(Yoga.EDGE_RIGHT) + this.layout_node.getComputedPadding(Yoga.EDGE_RIGHT);
+        const bottom = this.layout_node.getComputedBorder(Yoga.EDGE_BOTTOM) + this.layout_node.getComputedPadding(Yoga.EDGE_BOTTOM);
+        if (this.parent === undefined || !(this.parent instanceof LayoutContainer)) {
+            return Rect.of(
+                this.layout_node.getComputedLeft() + left,
+                this.layout_node.getComputedTop() + top,
+                this.layout_node.getComputedWidth() - left - right,
+                this.layout_node.getComputedHeight() - top - bottom,
+            );
+        }
+        else {
+            const { x, y } = this.parent.get_rect();
+            const { x: offset_x, y: offset_y } = this.parent.get_inner_offset();
+            return Rect.of(
+                x + this.layout_node.getComputedLeft() + left + offset_x,
+                y + this.layout_node.getComputedTop() + top + offset_y,
+                this.layout_node.getComputedWidth() - left - right,
+                this.layout_node.getComputedHeight() - top - bottom,
+            );
+        }
+    }
+
+    public get_inner_offset(): Position {
+        return Position.of(0, 0);
     }
 
     public dispose(recusive: boolean): void {

@@ -2,9 +2,13 @@ import Yoga, { Wrap as YogaWrap, PositionType as YogaPositionType, Node as YogaN
 import { Node, NodeWithChildren } from "../node/node.js";
 import DefaultLayoutConfig from "./config.js";
 import { Rect } from "../util/rect.js";
+import { Position } from "../util/position.js";
 
 export interface LayoutLeaf {
     readonly layout_node: YogaNode;
+    get_rect(): Rect;
+    get_content_rect(): Rect;
+    get_inner_offset(): Position;
 }
 
 type YogaValue = number | `${number}%` | undefined;
@@ -31,7 +35,7 @@ export interface LayoutNode extends LayoutLeaf {
     set width(v: YogaValueAuto);
     set min_width(v: YogaValue);
     set max_width(v: YogaValue);
-    set height(v: YogaValue);
+    set height(v: YogaValueAuto);
     set min_height(v: YogaValue);
     set max_height(v: YogaValue);
     set margin(v: YogaValueAuto);
@@ -65,7 +69,7 @@ export interface LayoutNode extends LayoutLeaf {
     set box_sizing(v: YogaBoxSizing);
 }
 
-export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | LayoutNode)> extends NodeWithChildren<Children> implements LayoutNode {
+export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | LayoutNode) = Node & (LayoutLeaf | LayoutNode)> extends NodeWithChildren<Children> implements LayoutNode {
 
     public readonly layout_node: YogaNode = Yoga.Node.createWithConfig(DefaultLayoutConfig);
 
@@ -89,7 +93,7 @@ export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | Layo
     set width(v: YogaValueAuto) { this.layout_node.setWidth(v); }
     set min_width(v: YogaValue) { this.layout_node.setMinWidth(v); }
     set max_width(v: YogaValue) { this.layout_node.setMaxWidth(v); }
-    set height(v: YogaValue) { this.layout_node.setHeight(v); }
+    set height(v: YogaValueAuto) { this.layout_node.setHeight(v); }
     set min_height(v: YogaValue) { this.layout_node.setMinHeight(v); }
     set max_height(v: YogaValue) { this.layout_node.setMaxHeight(v); }
     set margin(v: YogaValueAuto) { this.layout_node.setMargin(Yoga.EDGE_ALL, v); }
@@ -122,6 +126,17 @@ export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | Layo
     set border_vertical(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_VERTICAL, v); }
     set box_sizing(v: YogaBoxSizing) { this.layout_node.setBoxSizing(v); }
 
+    protected on_child_addeded(node: LayoutLeaf | LayoutNode): void {
+        this.layout_node.insertChild(node.layout_node, this.layout_node.getChildCount());
+    }
+    protected on_child_removed(node: LayoutLeaf | LayoutNode): void {
+        this.layout_node.removeChild(node.layout_node);
+    }
+    protected on_child_moved(node: LayoutLeaf | LayoutNode, from: number, to: number): void {
+        this.layout_node.removeChild(node.layout_node);
+        this.layout_node.insertChild(node.layout_node, to);
+    }
+
     public get_rect(): Rect {
         if (this.parent === undefined || !(this.parent instanceof LayoutContainer)) {
             return Rect.of(
@@ -133,13 +148,43 @@ export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | Layo
         }
         else {
             const { x, y } = this.parent.get_rect();
+            const { x: offset_x, y: offset_y } = this.parent.get_inner_offset();
             return Rect.of(
-                x + this.layout_node.getComputedLeft(),
-                y + this.layout_node.getComputedTop(),
+                x + this.layout_node.getComputedLeft() + offset_x,
+                y + this.layout_node.getComputedTop() + offset_y,
                 this.layout_node.getComputedWidth(),
                 this.layout_node.getComputedHeight(),
             );
         }
+    }
+
+    public get_content_rect(): Rect {
+        const left = this.layout_node.getComputedBorder(Yoga.EDGE_LEFT) + this.layout_node.getComputedPadding(Yoga.EDGE_LEFT);
+        const top = this.layout_node.getComputedBorder(Yoga.EDGE_TOP) + this.layout_node.getComputedPadding(Yoga.EDGE_TOP);
+        const right = this.layout_node.getComputedBorder(Yoga.EDGE_RIGHT) + this.layout_node.getComputedPadding(Yoga.EDGE_RIGHT);
+        const bottom = this.layout_node.getComputedBorder(Yoga.EDGE_BOTTOM) + this.layout_node.getComputedPadding(Yoga.EDGE_BOTTOM);
+        if (this.parent === undefined || !(this.parent instanceof LayoutContainer)) {
+            return Rect.of(
+                this.layout_node.getComputedLeft() + left,
+                this.layout_node.getComputedTop() + top,
+                this.layout_node.getComputedWidth() - left - right,
+                this.layout_node.getComputedHeight() - top - bottom,
+            );
+        }
+        else {
+            const { x, y } = this.parent.get_rect();
+            const { x: offset_x, y: offset_y } = this.parent.get_inner_offset();
+            return Rect.of(
+                x + this.layout_node.getComputedLeft() + left + offset_x,
+                y + this.layout_node.getComputedTop() + top + offset_y,
+                this.layout_node.getComputedWidth() - left - right,
+                this.layout_node.getComputedHeight() - top - bottom,
+            );
+        }
+    }
+
+    public get_inner_offset(): Position {
+        return Position.of(0, 0);
     }
 
     public dispose(recusive: boolean): void {

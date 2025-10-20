@@ -1,8 +1,8 @@
-import { Color } from "../../util/color.js";
-import { Rect } from "../../util/rect.js";
-import { ANSI } from "./ttyRenderer.js";
+import { Color } from "../util/color.js";
+import { Rect } from "../util/rect.js";
+import { ANSI } from "./renderer.js";
 
-export class TTyBufferPixel {
+export class BufferPixel {
 
     protected color: Color | undefined;
     protected bg_color: Color | undefined;
@@ -75,9 +75,9 @@ export type PixelTextStyle = {
     underline?: boolean;
 }
 
-export class TTyBuffer {
+export class Buffer {
 
-    private readonly pixels: TTyBufferPixel[][] = [];
+    private readonly pixels: BufferPixel[][] = [];
 
     private _width: number = 0;
     private _height: number = 0;
@@ -95,28 +95,33 @@ export class TTyBuffer {
             for (let i = 0; i < height - this._height; i++) {
                 const row = [];
                 for (let x = 0; x < width; x++) {
-                    row.push(new TTyBufferPixel());
+                    row.push(new BufferPixel());
                 }
                 this.pixels.push(row);
             }
         }
+        const last_height = Math.min(height, this._height);
+        this._height = height;
         if (this._width > width) {
-            for (let i = 0; i < height; i++) {
+            for (let i = 0; i < last_height; i++) {
                 this.pixels[i].splice(width, this._width - width);
             }
         }
         else if (this._width < width) {
-            for (let i = 0; i < this._height; i++) {
+            for (let i = 0; i < last_height; i++) {
                 for (let x = 0; x < width - this._width; x++) {
-                    this.pixels[i].push(new TTyBufferPixel());
+                    this.pixels[i].push(new BufferPixel());
                 }
             }
         }
         this._width = width;
-        this._height = height;
+        this.mask.x = 0;
+        this.mask.y = 0;
+        this.mask.width = width;
+        this.mask.height = height;
     }
 
-    protected set_pixel_text_style(pixel: TTyBufferPixel, text_style?: PixelTextStyle, clear_style?: boolean) {
+    protected set_pixel_text_style(pixel: BufferPixel, text_style?: PixelTextStyle, clear_style?: boolean) {
         if (clear_style || text_style?.color !== undefined) pixel.set_color(text_style?.color);
         if (clear_style || text_style?.bg_color !== undefined) pixel.set_bg_color(text_style?.bg_color);
         if (clear_style || text_style?.bold !== undefined) pixel.set_bold(text_style?.bold);
@@ -124,9 +129,27 @@ export class TTyBuffer {
         if (clear_style || text_style?.underline !== undefined) pixel.set_underline(text_style?.underline);
     }
 
+    protected readonly mask: Rect = Rect.of(0, 0, 0, 0);
+
+    public set_mask(mask?: Rect) {
+        if (mask === undefined) {
+            this.mask.x = 0;
+            this.mask.y = 0;
+            this.mask.width = this.width;
+            this.mask.height = this.height;
+        }
+        else {
+            this.mask.copy(Rect.of(0, 0, this.width, this.height).intersect(mask) ?? Rect.of(0, 0, 0, 0));
+        }
+    }
+
     public set_text_style(x: number, y: number, width: number, height: number, text_style?: PixelTextStyle, clear_style?: boolean) {
-        for (let i = 0; i < width && (x + i) < this._width; i++) {
-            for (let j = 0; j < height && (y + j) < this._height; j++) {
+        for (let i = 0; i < width; i++) {
+            if ((x + i) < this.mask.x) continue;
+            if ((x + i) >= this.mask.x + this.mask.width) break;
+            for (let j = 0; j < height; j++) {
+                if ((y + j) < this.mask.y) continue;
+                if ((y + j) >= this.mask.y + this.mask.height) break;
                 const pixel = this.pixels[y + j][x + i];
                 this.set_pixel_text_style(pixel, text_style, clear_style);
             }
@@ -135,36 +158,24 @@ export class TTyBuffer {
 
     public set_char(x: number, y: number, width?: number, height?: number, char?: string, span?: number, text_style?: PixelTextStyle, clear_style?: boolean) {
         const set_style = clear_style || text_style !== undefined;
-        if (width === undefined && height === undefined || width === 1 && height === 1) {
-            if (x >= this._width || y >= this._height) return;
-            const pixel = this.pixels[y][x];
-            pixel.set_content(char, span);
-            if (set_style) {
-                this.set_pixel_text_style(pixel, text_style, clear_style);
-            }
-        }
-        else {
-            width ??= 1;
-            height ??= 1;
-            for (let i = 0; i < width && (x + i) < this._width; i++) {
-                for (let j = 0; j < height && (y + j) < this._height; j++) {
-                    const pixel = this.pixels[y + j][x + i];
-                    pixel.set_content(char, span);
-                    if (set_style) {
-                        this.set_pixel_text_style(pixel, text_style, clear_style);
-                    }
+        width ??= 1;
+        height ??= 1;
+        for (let i = 0; i < width; i++) {
+            if ((x + i) < this.mask.x) continue;
+            if ((x + i) >= this.mask.x + this.mask.width) break;
+            for (let j = 0; j < height; j++) {
+                if ((y + j) < this.mask.y) continue;
+                if ((y + j) >= this.mask.y + this.mask.height) break;
+                const pixel = this.pixels[y + j][x + i];
+                pixel.set_content(char, span);
+                if (set_style) {
+                    this.set_pixel_text_style(pixel, text_style, clear_style);
                 }
             }
         }
     }
 
     public *iterate(x: number, y: number, width: number, height: number) {
-        // const rect = Rect.of(0, 0, this._width, this._height).intersect(Rect.of(x, y, width, height));
-        // if (rect === undefined) return;
-        // x = rect.x;
-        // y = rect.y;
-        // width = rect.width;
-        // height = rect.height;
         for (let j = 0; j < height && (y + j) < this._height; j++) {
             let newline = true;
             for (let i = 0; i < width && (x + i) < this._width; i++) {

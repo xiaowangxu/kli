@@ -1,7 +1,12 @@
+import { Renderer } from "../render/renderer.js";
+import { Scene } from "../scene/scene.js";
+
 export interface Node {
     parent: NodeWithChild<Node> | undefined;
     get_unstyled_text_content(): string;
+    draw(render: Renderer): void;
     dispose(recusive: boolean): void;
+    get_scene(): Scene | undefined;
 }
 
 export interface NodeWithChild<Child extends Node> extends Node {
@@ -49,6 +54,12 @@ export abstract class NodeWithChildren<Children extends Node> implements NodeWit
 
     protected abstract on_child_moved(node: Children, from: number, to: number): void;
 
+    public get_scene(): Scene | undefined {
+        return this.parent?.get_scene();
+    }
+
+    public abstract draw(render: Renderer): void;
+
     public abstract dispose(recusive: boolean): void;
-    
+
 }
