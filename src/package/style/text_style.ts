@@ -1,15 +1,19 @@
 import { Color } from "../util/color.js";
 
 export interface TextStyle {
-    get color(): Color | undefined;
-    get bg_color(): Color | undefined;
-    get bold(): boolean | undefined;
-    get italic(): boolean | undefined;
-    get underline(): boolean | undefined;
+    color: Color | undefined;
+    bg_color: Color | undefined;
+    bold: boolean | undefined;
+    italic: boolean | undefined;
+    underline: boolean | undefined;
+}
 
-    set color(v: Color | undefined);
-    set bg_color(v: Color | undefined);
-    set bold(v: boolean | undefined);
-    set italic(v: boolean | undefined);
-    set underline(v: boolean | undefined);
+export function merge_text_styles(a: Partial<TextStyle>, b: Partial<TextStyle>): Partial<TextStyle> {
+    return {
+        color: a.color ?? b.color,
+        bg_color: a.bg_color ?? b.bg_color,
+        bold: a.bold ?? b.bold,
+        italic: a.italic ?? b.italic,
+        underline: a.underline ?? b.underline
+    };
 }

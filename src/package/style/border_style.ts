@@ -25,9 +25,6 @@ export const BorderStyleType = {
 } as const;
 
 export interface BorderStyle {
-    get border_color(): Color | undefined;
-    get border_type(): BorderType | undefined;
-
-    set border_color(v: Color | undefined);
-    set border_type(v: BorderType | undefined);
+    border_color: Color | undefined;
+    border_type: BorderType | undefined;
 }

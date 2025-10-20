@@ -6,7 +6,7 @@ import { Rect } from "./package/util/rect.js";
 import { Input } from "./package/input/input.js";
 import { Scene } from "./package/scene/scene.js";
 import { BorderStyleType } from "./package/style/border_style.js";
-import { Text, TextContent } from "./package/node/text.js";
+import { Newline, Text, TextContent } from "./package/node/text.js";
 
 const box = new Container();
 const sub1 = new Container();
@@ -14,12 +14,19 @@ const sub2 = new Container();
 
 const text = new TextContainer();
 const text_span = new Text();
-const text_content = new TextContent();
-text_content.content = "Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World";
+const text_content1 = new TextContent();
+const text_content2 = new TextContent();
+text_content1.content = "Hello Kli";
+text_content2.content = "World";
+text_content2.color = Color.of(255, 0, 0);
+text_content2.bg_color = Color.of(0, 0, 255);
+text_content2.italic = true;
 
 sub1.add_child(text);
 text.set_text(text_span);
-text_span.add_child(text_content);
+text_span.add_child(text_content1);
+text_span.add_child(new Newline());
+text_span.add_child(text_content2);
 
 box.flex_direction = FlexDirection.Row;
 box.gap = 1;
@@ -118,7 +125,7 @@ for (let i = 0; i < 13; i++) {
 const scene = new Scene();
 scene.add_child(box);
 const renderer = new Renderer(process.stdout, (render) => {
-    render.fill(Rect.of(0, 0, render.width, render.height), Color.of(0,0,0));
+    render.fill(Rect.of(0, 0, render.width, render.height), Color.of(0, 0, 0));
     // render.set_viewport(Rect.of(0, 0, 40, 10));
     // render.fill(Rect.of(0, 0, render.width, render.height));
     render.draw_scene();
@@ -138,7 +145,6 @@ renderer.queue_render();
 // }, 66);
 
 input.stream.on('data', (data) => {
-    text_content.content = `Hello World ${data.toString('utf-8').replace('\x1b', '\\x1b')}`;
     time += 0.1;
     time %= 20;
 });

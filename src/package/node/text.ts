@@ -5,9 +5,9 @@ import { Color } from "../util/color.js";
 import { TextContainer } from "./container.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 
-export class Text extends NodeWithChildren<Text | TextContent> implements TextStyle {
+export class Text extends NodeWithChildren<Text | TextContent | Newline> implements TextStyle {
 
-    public readonly children: (Text | TextContent)[] = [];
+    public readonly children: (Text | TextContent | Newline)[] = [];
 
     public color: Color | undefined;
     public bg_color: Color | undefined;
@@ -19,13 +19,16 @@ export class Text extends NodeWithChildren<Text | TextContent> implements TextSt
         return this.children.map(c => c.get_unstyled_text_content()).join('');
     }
 
-    protected on_child_addeded(node: Text | TextContent): void {
+    protected on_child_addeded(node: Text | TextContent | Newline): void {
+        this.get_text_container()?.notify_text_change();
     }
 
-    protected on_child_removed(node: Text | TextContent): void {
+    protected on_child_removed(node: Text | TextContent | Newline): void {
+        this.get_text_container()?.notify_text_change();
     }
 
-    protected on_child_moved(node: Text | TextContent, from: number, to: number): void {
+    protected on_child_moved(node: Text | TextContent | Newline, from: number, to: number): void {
+        this.get_text_container()?.notify_text_change();
     }
 
     public get_text_container() {
@@ -91,4 +94,24 @@ export class TextContent implements Node, TextStyle {
 
     }
 
+}
+
+export class Newline implements Node {
+    public parent: NodeWithChild<Node> | undefined;
+
+    get_unstyled_text_content(): string {
+        return '\n';
+    }
+
+    draw(render: Renderer): void {
+        throw new Error("Method not implemented.");
+    }
+
+    get_scene(): Scene | undefined {
+        return this.parent?.get_scene();
+    }
+
+    dispose(recusive: boolean): void {
+
+    }
 }
