@@ -18,7 +18,8 @@ const text_span = new Text();
 const text_span2 = new Text();
 const text_content1 = new TextContent();
 const text_content2 = new TextContent();
-text_content1.content = "Hello Kli Hello Kli Hello Kli Hello Kli Hello Kli Hello Kli";
+text_content1.content = `Hello Kli 111 222 333 444 555 666 777 888 999 000 Hello World 这个可以换行 😘
+这是个非常好的问题，实际上是 **终端字符宽度（character width / display width）** 的问题`;
 text_span2.text_wrap = TextWrap.WrapWord;
 text_content2.content = `Hello World 这个可以换行 😘
 这是个非常好的问题，实际上是 **终端字符宽度（character width / display width）** 的问题。

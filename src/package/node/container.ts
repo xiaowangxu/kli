@@ -123,13 +123,12 @@ export enum TextWrap {
     WrapWord,
 }
 
-type TextContainerSpan = { content?: string, width: number, text_wrap?: TextWrap, text_style?: Partial<TextStyle>, newline: boolean, single?: boolean };
-type WrappedTextContainerSpan = { content: string, x: number, y: number, width: number, text_style?: Partial<TextStyle> };
+type TextContainerSpan = { content?: string, override?: string, x: number, y: number, width: number, text_wrap?: TextWrap, text_style?: Partial<TextStyle>, newline: boolean };
 
 export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
 
     public readonly layout_node: YogaNode = Yoga.Node.createWithConfig(DefaultLayoutConfig);
-    
+
     protected _text_wrap: TextWrap = TextWrap.Wrap;
     protected _mask: boolean = false;
 
@@ -228,30 +227,36 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
                     const style = merge_text_styles(base_style, child);
                     const lines = child.content.split('\n');
                     for (let i = 0; i < lines.length; i++) {
-                        const width = calculate_string_width(lines[i]);
-                        target.push({
-                            content: lines[i],
-                            width: width,
-                            text_wrap: text.text_wrap,
-                            text_style: style,
-                            newline: i < lines.length - 1,
+                        const chars = split_string_with_width(lines[i]);
+                        chars.forEach(({ char, width }) => {
+                            target.push({
+                                content: char,
+                                width: width,
+                                text_wrap: text.text_wrap,
+                                text_style: style,
+                                newline: false,
+                                x: 0,
+                                y: 0,
+                            });
                         });
+                        if (i < lines.length - 1) {
+                            target.push({
+                                width: 1,
+                                newline: true,
+                                x: 0,
+                                y: 0,
+                            });
+                        }
                     }
                 }
             }
             else {
-                if (target[0] === undefined || target[target.length - 1].newline) {
-                    target.push({
-                        content: undefined,
-                        width: 0,
-                        text_wrap: TextWrap.NoWrap,
-                        text_style: undefined,
-                        newline: true,
-                    });
-                }
-                else {
-                    target[target.length - 1].newline = true;
-                }
+                target.push({
+                    width: 1,
+                    newline: true,
+                    x: 0,
+                    y: 0,
+                });
             }
         }
     }
@@ -262,135 +267,121 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         this.push_text_spans(this.text, {}, this.text_spans);
     }
 
-    protected wrap_text_spans(max_width: number, max_height: number = Infinity, measure_only: boolean = true, non_fit_char: string = '*') {
+    protected wrap_text_spans(max_width: number, max_height: number = Infinity, non_fit_char: string = '*') {
         if (max_width <= 0 || max_height <= 0) {
             return {
                 width: 0,
                 height: 0,
-                spans: undefined,
             };
         }
-        let wrapped_spans: WrappedTextContainerSpan[] | undefined = undefined;
-        if (!measure_only) wrapped_spans = [];
+
         let result_width = 0;
         let result_height = 0;
         let current_width = 0;
+        let soft_newline = false;
+
+        function new_line(soft: boolean) {
+            result_height++;
+            result_width = Math.max(result_width, current_width);
+            current_width = 0;
+            soft_newline = soft;
+        }
+
+        function push_inline(span: TextContainerSpan, auto_soft_newline: boolean) {
+            soft_newline = false;
+            span.x = current_width;
+            span.y = result_height - 1;
+            current_width += span.width;
+            if (auto_soft_newline && current_width >= max_width) {
+                new_line(true);
+            }
+        }
+
         const spans = [...this.text_spans];
+
+        function peek_span(index: number = 0) {
+            return spans[index];
+        }
+
+        function pop_span() {
+            return spans.shift();
+        }
+
         while (spans.length > 0) {
-            const { content, width: length, text_wrap, text_style, newline, single = false } = spans.shift()!;
+            const span = peek_span();
+            const { content, width, text_wrap, newline } = span;
             const wrap = text_wrap ?? this.text_wrap;
-            if (content !== undefined) {
-                result_height = Math.max(1, result_height);
-                if (single && length > max_width) {
-                    !measure_only ? wrapped_spans!.push({
-                        content: non_fit_char,
-                        x: current_width,
-                        y: result_height - 1,
-                        width: 1,
-                        text_style,
-                    }) : undefined;
-                    current_width += 1;
-                    if (spans.length === 0 || result_height >= max_height) break;
-                    result_height++;
-                    result_width = Math.max(result_width, current_width);
-                    current_width = 0;
-                    continue;
-                }
-                else if (single && current_width + length > max_width) {
-                    result_height++;
-                    if (result_height >= max_height) break;
-                    result_width = Math.max(result_width, current_width);
-                    current_width = 0;
-                    !measure_only ? wrapped_spans!.push({
-                        content,
-                        x: current_width,
-                        y: result_height - 1,
-                        width: length,
-                        text_style,
-                    }) : undefined;
-                    current_width += length;
-                    continue;
-                }
-                else if (current_width + length <= max_width) {
-                    !measure_only ? wrapped_spans!.push({
-                        content,
-                        x: current_width,
-                        y: result_height - 1,
-                        width: length,
-                        text_style,
-                    }) : undefined;
-                    current_width += length;
-                }
-                else if (wrap === TextWrap.NoWrap || wrap === TextWrap.Wrap) {
-                    // break all
-                    let str = '';
-                    let wrapped = false;
-                    const chars = split_string_with_width(content);
-                    let unwrapped_width = 0;
-                    while (chars.length > 0) {
-                        let { char, width } = chars[0];
-                        if (current_width + unwrapped_width + width <= max_width) {
-                            chars.shift();
-                            str += char;
-                            unwrapped_width += width;
-                            wrapped = true;
-                        }
-                        else {
-                            break;
-                        }
+            if (width > 0) result_height = Math.max(result_height, 1);
+            else {
+                pop_span();
+                continue;
+            }
+            if (!newline) {
+                if (content === undefined) continue;
+
+                if (wrap === TextWrap.Wrap) {
+                    if (current_width + width <= max_width) {
+                        pop_span();
+                        push_inline(span, true);
                     }
-                    if (wrapped) {
-                        !measure_only ? wrapped_spans!.push({
-                            content: str,
-                            x: current_width,
-                            y: result_height - 1,
-                            width: unwrapped_width,
-                            text_style,
-                        }) : undefined;
-                        current_width += unwrapped_width;
-                        result_width = Math.max(result_width, current_width);
+                    else new_line(true);
+                }
+                else if (wrap === TextWrap.NoWrap) {
+                    if (current_width + width <= max_width) {
+                        pop_span();
+                        push_inline(span, false);
                     }
-                    if (this.text_wrap === TextWrap.NoWrap) break;
-                    if (text_wrap === TextWrap.NoWrap) {
-                        if (spans.length === 0 || result_height >= max_height) break;
-                        result_height++;
-                        current_width = 0;
-                        continue;
-                    }
-                    // wrap line
-                    if (chars.length > 0) {
-                        if (result_height >= max_height) break;
-                        chars.reverse().forEach(({ char, width }, index) => {
-                            spans.unshift({
-                                content: char,
-                                width,
-                                text_wrap,
-                                text_style,
-                                newline: index === 0 ? newline : false,
-                                single: true,
-                            });
-                        });
-                        result_height++;
-                        current_width = 0;
-                        continue;
+                    else {
+                        while (!(peek_span()?.newline ?? true)) pop_span();
                     }
                 }
                 else if (wrap === TextWrap.WrapWord) {
-                    const spans = split_string_with_width(content);
-                    
+                    let index = 0;
+                    let word_width = 0;
+                    let found = false;
+                    while (true) {
+                        const span = peek_span(index);
+                        if (span === undefined) break;
+                        if (span.newline) {
+                            found = true;
+                            break;
+                        }
+                        word_width += span.width;
+                        if (current_width + word_width > max_width) {
+                            new_line(true);
+                            found = false;
+                            break;
+                        }
+                        if (span.content === ' ' || span.content === '-') {
+                            found = true;
+                            break;
+                        }
+                        index++;
+                    }
+                    if (found) {
+                        for (let i = 0; i <= index; i++) {
+                            const span = pop_span()!;
+                            if (span.newline) {
+                                new_line(false);
+                            }
+                            else {
+                                push_inline(span, false);
+                            }
+                        }
+                    }
+                    else {
+                        
+                    }
                 }
             }
-            if (newline) {
-                if (result_height >= max_height) break;
-                result_height++;
-                result_width = Math.max(result_width, current_width);
-                current_width = 0;
+            else {
+                pop_span();
+                new_line(false);
             }
         }
         return {
             width: result_width,
-            height: result_height,
-            spans: wrapped_spans,
+            height: soft_newline ? result_height - 1 : result_height,
         };
     }
 
@@ -428,20 +419,18 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
 
     private last_content_width = -1;
     private last_content_height = -1;
-    private last_spans: WrappedTextContainerSpan[] | undefined = undefined
     public draw(render: Renderer): void {
         const content_rect = this.get_content_rect();
         if (this.mask) render.push_mask(content_rect);
         if (this.last_content_width !== content_rect.width || this.last_content_height !== content_rect.height) {
             this.last_content_width = content_rect.width;
             this.last_content_height = content_rect.height;
-            this.last_spans = this.wrap_text_spans(this.last_content_width, Infinity, false).spans;
+            this.wrap_text_spans(this.last_content_width, Infinity);
         }
-        if (this.last_spans !== undefined) {
-            for (const span of this.last_spans) {
-                const { content, x, y, text_style } = span;
-                render.draw_string(content_rect.x + x, content_rect.y + y, content, text_style, false);
-            }
+        for (const span of this.text_spans) {
+            const { content, override, x, y, text_style } = span;
+            if (override === undefined && content === undefined) continue;
+            render.draw_string(content_rect.x + x, content_rect.y + y, (override ?? content)!, text_style, false);
         }
         if (this.mask) render.pop_mask();
     }
