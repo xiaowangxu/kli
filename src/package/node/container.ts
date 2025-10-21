@@ -129,8 +129,9 @@ type WrappedTextContainerSpan = { content: string, x: number, y: number, width: 
 export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
 
     public readonly layout_node: YogaNode = Yoga.Node.createWithConfig(DefaultLayoutConfig);
-
+    
     protected _text_wrap: TextWrap = TextWrap.Wrap;
+    protected _mask: boolean = false;
 
     get text_wrap(): TextWrap {
         return this._text_wrap;
@@ -138,6 +139,13 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
     set text_wrap(v: TextWrap | undefined) {
         this._text_wrap = v ?? TextWrap.Wrap;
         this.notify_layout_change();
+    }
+    get mask(): boolean {
+        return this._mask;
+    }
+    set mask(v: boolean) {
+        this._mask = v;
+        this.get_scene()?.notify_change();
     }
 
     parent: NodeWithChild<Node> | undefined;
@@ -312,13 +320,6 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
                         text_style,
                     }) : undefined;
                     current_width += length;
-                    if (current_width >= max_width) {
-                        if (spans.length === 0 || result_height >= max_height) break;
-                        result_height++;
-                        result_width = Math.max(result_width, current_width);
-                        current_width = 0;
-                        continue;
-                    }
                 }
                 else if (wrap === TextWrap.NoWrap || wrap === TextWrap.Wrap) {
                     // break all
@@ -359,22 +360,24 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
                     // wrap line
                     if (chars.length > 0) {
                         if (result_height >= max_height) break;
-                        result_height++;
-                        chars.reverse().forEach(({ char, width }, index, arr) => {
+                        chars.reverse().forEach(({ char, width }, index) => {
                             spans.unshift({
                                 content: char,
                                 width,
                                 text_wrap,
                                 text_style,
-                                newline: index === arr.length - 1 ? newline : false,
+                                newline: index === 0 ? newline : false,
                                 single: true,
                             });
                         });
+                        result_height++;
                         current_width = 0;
                         continue;
                     }
                 }
                 else if (wrap === TextWrap.WrapWord) {
+                    const spans = split_string_with_width(content);
+                    
                 }
             }
             if (newline) {
@@ -428,7 +431,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
     private last_spans: WrappedTextContainerSpan[] | undefined = undefined
     public draw(render: Renderer): void {
         const content_rect = this.get_content_rect();
-        render.push_mask(content_rect);
+        if (this.mask) render.push_mask(content_rect);
         if (this.last_content_width !== content_rect.width || this.last_content_height !== content_rect.height) {
             this.last_content_width = content_rect.width;
             this.last_content_height = content_rect.height;
@@ -440,7 +443,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
                 render.draw_string(content_rect.x + x, content_rect.y + y, content, text_style, false);
             }
         }
-        render.pop_mask();
+        if (this.mask) render.pop_mask();
     }
 
     public get_rect(): Rect {

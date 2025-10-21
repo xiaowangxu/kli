@@ -32,7 +32,7 @@ export class Scene extends LayoutContainer {
 
     public draw(render: Renderer): void {
         for (const child of this.children) {
-            child.draw(render, false);
+            child.draw(render, true);
         }
     }
 

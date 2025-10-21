@@ -19,7 +19,7 @@ const text_span2 = new Text();
 const text_content1 = new TextContent();
 const text_content2 = new TextContent();
 text_content1.content = "Hello Kli Hello Kli Hello Kli Hello Kli Hello Kli Hello Kli";
-text_span2.text_wrap = TextWrap.NoWrap;
+text_span2.text_wrap = TextWrap.WrapWord;
 text_content2.content = `Hello World 这个可以换行 😘
 这是个非常好的问题，实际上是 **终端字符宽度（character width / display width）** 的问题。
 你看到中文引号 \`“ ”\` 在控制台中宽度为 **1**，是因为 **Unicode East Asian Width 属性** 的定义和终端渲染策略不一致造成的。下面我来详细解释：
