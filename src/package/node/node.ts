@@ -4,7 +4,7 @@ import { Scene } from "../scene/scene.js";
 export interface Node {
     parent: NodeWithChild<Node> | undefined;
     get_unstyled_text_content(): string;
-    draw(render: Renderer): void;
+    draw(render: Renderer, force?: boolean): void;
     dispose(recusive: boolean): void;
     get_scene(): Scene | undefined;
 }

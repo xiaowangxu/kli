@@ -2,7 +2,7 @@ import { Renderer } from "../render/renderer.js";
 import { Scene } from "../scene/scene.js";
 import { TextStyle } from "../style/text_style.js";
 import { Color } from "../util/color.js";
-import { TextContainer } from "./container.js";
+import { TextContainer, TextWrap } from "./container.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 
 export class Text extends NodeWithChildren<Text | TextContent | Newline> implements TextStyle {
@@ -14,6 +14,16 @@ export class Text extends NodeWithChildren<Text | TextContent | Newline> impleme
     public bold: boolean | undefined;
     public italic: boolean | undefined;
     public underline: boolean | undefined;
+
+    protected _text_wrap: TextWrap | undefined;
+
+    get text_wrap() {
+        return this._text_wrap;
+    }
+    set text_wrap(v: TextWrap | undefined) {
+        this._text_wrap = v;
+        this.get_text_container()?.notify_layout_change();
+    }
 
     public get_unstyled_text_content(): string {
         return this.children.map(c => c.get_unstyled_text_content()).join('');

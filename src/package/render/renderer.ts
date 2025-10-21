@@ -4,8 +4,6 @@ import { PixelTextStyle, Buffer } from "./buffer.js";
 import { Rect } from "../util/rect.js";
 import { Scene } from "../scene/scene.js";
 import { BorderType } from "../style/border_style.js";
-import { TextContainer } from "../node/container.js";
-import { log } from "../util/logger.js";
 
 export const ANSI = {
     none: '',
@@ -39,7 +37,7 @@ export const ANSI = {
 };
 
 // #region emoji_regax
-export const emoji_regax = /\p{Emoji_Presentation}/gu;
+export const emoji_regax = /\p{Emoji_Presentation}/u;
 // #endregion
 
 export function calculate_char_region(char: string) {
@@ -295,7 +293,7 @@ export function calculate_char_region(char: string) {
     return 'N';
 };
 
-export function calculate_char_width(char: string, ambiguous_width: number = 2) {
+export function calculate_char_width(char: string, ambiguous_width: number = 1) {
     const code_point = char.codePointAt(0)!;
     if (code_point <= 0x1F || (code_point >= 0x7F && code_point <= 0x9F)) {
         return 0;
@@ -316,17 +314,18 @@ export function calculate_char_width(char: string, ambiguous_width: number = 2) 
     }
 }
 
-export function calculate_string_width(str: string, ambiguous_width: number = 2) {
+export function calculate_string_width(str: string, ambiguous_width: number = 1) {
     let width = 0;
     const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' });
     const chars = Array.from(segmenter.segment(str), s => s.segment);
     for (const char of chars) {
-        width += calculate_char_width(char, ambiguous_width);
+        const char_width = calculate_char_width(char, ambiguous_width);
+        width += char_width;
     }
     return width;
 }
 
-export function split_string_with_width(str: string, ambiguous_width: number = 2) {
+export function split_string_with_width(str: string, ambiguous_width: number = 1) {
     const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' });
     return Array.from(segmenter.segment(str), s => ({ char: s.segment, width: calculate_char_width(s.segment, ambiguous_width) }));
 }
