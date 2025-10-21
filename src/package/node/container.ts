@@ -3,7 +3,7 @@ import { LayoutContainer, LayoutLeaf } from "../layout/layout.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 import { Text, TextContent } from "./text.js";
 import DefaultLayoutConfig from "../layout/config.js";
-import { calculate_char_width, emoji_regax, Renderer } from "../render/renderer.js";
+import { calculate_char_width, calculate_string_width, emoji_regax, Renderer, split_string_with_width } from "../render/renderer.js";
 import { Color } from "../util/color.js";
 import { BorderStyle, BorderType } from "../style/border_style.js";
 import { Scene } from "../scene/scene.js";
@@ -12,6 +12,7 @@ import { Position } from "../util/position.js";
 import { BoxStyle } from "../style/box_style.js";
 import { execute_shader, Shader } from "../style/shader.js";
 import { merge_text_styles, TextStyle } from "../style/text_style.js";
+import { log } from "../util/logger.js";
 
 export enum Overflow {
     Visible,
@@ -71,7 +72,6 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
         return this.parent?.get_scene();
     }
 
-    private count: number = 0;
     public draw(render: Renderer): void {
         const left = this.layout_node.getComputedBorder(Yoga.EDGE_LEFT);
         const top = this.layout_node.getComputedBorder(Yoga.EDGE_TOP);
@@ -90,7 +90,8 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
 
         if (this.border_type !== undefined) render.draw_box_border(rect, this.border_type, { color: this.border_color }, false);
 
-        render.draw_string(rect.x + 2, rect.y, ` ${this.offset.x}x${this.offset.y} c: ${this.count++} `);
+        render.draw_string(rect.x + 2, rect.y, ` 😊 ${this.offset.x}x${this.offset.y} `);
+        // render.draw_char(rect.x + 2, rect.y, 1, 1, `👩🏾‍👧🏼‍👦🏿`);
 
         if (this._overflow === Overflow.Hidden) render.push_mask(this.get_content_rect());
         for (const child of this.children) {
@@ -109,7 +110,8 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
 
 }
 
-type TextContainerSpan = { content?: string, text_style?: Partial<TextStyle>, newline: boolean };
+type TextContainerSpan = { content?: string, width: number, text_style?: Partial<TextStyle>, newline: boolean };
+type WrappedTextContainerSpan = { content: string, x: number, y: number, width: number, text_style?: Partial<TextStyle> };
 
 export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
 
@@ -123,25 +125,37 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
     constructor() {
         this.layout_node.setMeasureFunc((width: number, width_mode: YogaMeasureMode, height: number, height_mode: YogaMeasureMode) => {
 
+            width = Math.floor(width);
+            height = Math.floor(height);
+
+            if (width === 0 || height === 0) {
+                return {
+                    width: 0,
+                    height: 0,
+                };
+            }
+
             let measured_width = 0;
             let measured_height = 0;
 
             // 根据宽度模式处理
             if (width_mode === Yoga.MEASURE_MODE_EXACTLY) {
                 // 精确宽度：按此宽度换行
-                measured_width = width;
-                measured_height = 2;
+                const { width: wrapped_width, height: wrapped_height } = this.wrap_text_spans(width);
+                measured_width = wrapped_width;
+                measured_height = wrapped_height;
             }
             else if (width_mode === Yoga.MEASURE_MODE_AT_MOST) {
                 // 最大宽度：在此范围内自适应
-                measured_width = 2;
-                measured_height = 2;
+                const { width: _wrapped_width, height: wrapped_height } = this.wrap_text_spans(width);
+                measured_width = width;
+                measured_height = wrapped_height;
             }
             else {
                 // 无约束：单行显示
-                const lines = this.text_spans.map(s => s.content).join('').split('\n');
-                measured_width = lines.reduce((max, str) => Math.max(max, TextContainer.calculate_string_width(str)), 0);
-                measured_height = lines.length;
+                const { width: wrapped_width, height: wrapped_height } = this.wrap_text_spans(Infinity);
+                measured_width = wrapped_width;
+                measured_height = wrapped_height;
             }
 
             // 根据高度模式处理
@@ -181,6 +195,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
                     for (let i = 0; i < lines.length; i++) {
                         target.push({
                             content: lines[i],
+                            width: calculate_string_width(lines[i]),
                             text_style: style,
                             newline: i < lines.length - 1,
                         });
@@ -191,6 +206,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
                 if (target[0] === undefined || target[target.length - 1].newline) {
                     target.push({
                         content: undefined,
+                        width: 0,
                         text_style: undefined,
                         newline: true,
                     });
@@ -208,6 +224,82 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         this.push_text_spans(this.text, {}, this.text_spans);
     }
 
+    protected wrap_text_spans(max_width: number, measure_only: boolean = true) {
+        let wrapped_spans: WrappedTextContainerSpan[] | undefined = undefined;
+        if (!measure_only) wrapped_spans = [];
+        let result_width = 0;
+        let result_height = 0;
+        let current_width = 0;
+        const spans = [...this.text_spans];
+        while (spans.length > 0) {
+            const { content, width: length, text_style, newline } = spans.shift()!;
+            if (content !== undefined) {
+                result_height = Math.max(1, result_height);
+                if (current_width + length <= max_width) {
+                    !measure_only ? wrapped_spans!.push({
+                        content,
+                        x: current_width,
+                        y: result_height - 1,
+                        width: length,
+                        text_style,
+                    }) : undefined;
+                    current_width += length;
+                }
+                else {
+                    // break all
+                    let str = '';
+                    let wrapped = false;
+                    const chars = split_string_with_width(content);
+                    let unwrapped_width = 0;
+                    while (chars.length > 0) {
+                        const { char, width } = chars[0];
+                        if (current_width + unwrapped_width + width <= max_width) {
+                            chars.shift();
+                            str += char;
+                            unwrapped_width += width;
+                            wrapped = true;
+                        }
+                        else {
+                            break;
+                        }
+                    }
+                    if (wrapped) {
+                        !measure_only ? wrapped_spans!.push({
+                            content: str,
+                            x: current_width,
+                            y: result_height - 1,
+                            width: unwrapped_width,
+                            text_style,
+                        }) : undefined;
+                        current_width += unwrapped_width;
+                        result_width = Math.max(result_width, current_width);
+                    }
+                    if (chars.length > 0) {
+                        result_height++;
+                        spans.unshift({
+                            content: chars.map(s => s.char).join(''),
+                            width: chars.reduce((t, s) => t + s.width, 0),
+                            text_style,
+                            newline
+                        });
+                        current_width = 0;
+                        continue;
+                    }
+                }
+            }
+            if (newline) {
+                result_height++;
+                result_width = Math.max(result_width, current_width);
+                current_width = 0;
+            }
+        }
+        return {
+            width: result_width,
+            height: result_height,
+            spans: wrapped_spans,
+        };
+    }
+
     public set_text(text: Text) {
         if (text.parent !== undefined) {
             if (text.parent === this) return;
@@ -221,7 +313,6 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
     public clear_text(): boolean {
         if (this.text === undefined) return false;
         if (this.remove_child(this.text)) {
-            this.notify_text_change();
             return true;
         }
         return false;
@@ -231,6 +322,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         if (node.parent === this && this.text === node) {
             this.text = undefined;
             node.parent = undefined;
+            this.notify_text_change();
             return true;
         }
         return false;
@@ -240,24 +332,23 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         return this.parent?.get_scene();
     }
 
+    private last_content_width = -1;
+    private last_content_height = -1;
+    private last_spans: WrappedTextContainerSpan[] | undefined = undefined
     public draw(render: Renderer): void {
         const content_rect = this.get_content_rect();
         render.push_mask(content_rect);
-
-        let x = content_rect.x;
-        let y = content_rect.y;
-        for (const span of this.text_spans) {
-            const { content, text_style, newline } = span;
-            if (content !== undefined) {
-                const width = render.draw_string(x, y, content, text_style, false);
-                x += width;
-            }
-            if (newline) {
-                y += 1;
-                x = content_rect.x;
+        if (this.last_content_width !== content_rect.width || this.last_content_height !== content_rect.height) {
+            this.last_content_width = content_rect.width;
+            this.last_content_height = content_rect.height;
+            this.last_spans = this.wrap_text_spans(this.last_content_width, false).spans;
+        }
+        if (this.last_spans !== undefined) {
+            for (const span of this.last_spans) {
+                const { content, x, y, text_style } = span;
+                render.draw_string(content_rect.x + x, content_rect.y + y, content, text_style, false);
             }
         }
-
         render.pop_mask();
     }
 
@@ -273,6 +364,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         else {
             const { x, y } = this.parent.get_rect();
             const { x: offset_x, y: offset_y } = this.parent.get_inner_offset();
+            log(this.layout_node.getComputedWidth());
             return Rect.of(
                 x + this.layout_node.getComputedLeft() + offset_x,
                 y + this.layout_node.getComputedTop() + offset_y,
@@ -283,28 +375,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
     }
 
     public get_content_rect(): Rect {
-        const left = this.layout_node.getComputedBorder(Yoga.EDGE_LEFT) + this.layout_node.getComputedPadding(Yoga.EDGE_LEFT);
-        const top = this.layout_node.getComputedBorder(Yoga.EDGE_TOP) + this.layout_node.getComputedPadding(Yoga.EDGE_TOP);
-        const right = this.layout_node.getComputedBorder(Yoga.EDGE_RIGHT) + this.layout_node.getComputedPadding(Yoga.EDGE_RIGHT);
-        const bottom = this.layout_node.getComputedBorder(Yoga.EDGE_BOTTOM) + this.layout_node.getComputedPadding(Yoga.EDGE_BOTTOM);
-        if (this.parent === undefined || !(this.parent instanceof LayoutContainer)) {
-            return Rect.of(
-                this.layout_node.getComputedLeft() + left,
-                this.layout_node.getComputedTop() + top,
-                this.layout_node.getComputedWidth() - left - right,
-                this.layout_node.getComputedHeight() - top - bottom,
-            );
-        }
-        else {
-            const { x, y } = this.parent.get_rect();
-            const { x: offset_x, y: offset_y } = this.parent.get_inner_offset();
-            return Rect.of(
-                x + this.layout_node.getComputedLeft() + left + offset_x,
-                y + this.layout_node.getComputedTop() + top + offset_y,
-                this.layout_node.getComputedWidth() - left - right,
-                this.layout_node.getComputedHeight() - top - bottom,
-            );
-        }
+        return this.get_rect();
     }
 
     public get_inner_offset(): Position {
@@ -319,25 +390,4 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         this.layout_node.free();
     }
 
-    public static calculate_string_width(str: string, ambiguous_width: number = 1) {
-        if (str.length === 0) return 0;
-
-        str = str.replace(emoji_regax(), '  ');
-
-        let width = 0;
-
-        for (const char of str) {
-            const code_point = char.codePointAt(0)!;
-            // Ignore control characters
-            if (code_point <= 0x1F || (code_point >= 0x7F && code_point <= 0x9F)) {
-                continue;
-            }
-            // Ignore combining characters
-            if (code_point >= 0x300 && code_point <= 0x36F) {
-                continue;
-            }
-            width += calculate_char_width(char);
-        }
-        return width;
-    }
 }
