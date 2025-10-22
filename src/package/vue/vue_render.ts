@@ -1,11 +1,15 @@
-import { createRenderer } from '@vue/runtime-core'
+import { Component, createRenderer } from '@vue/runtime-core'
 import { Container, TextContainer } from '../node/container.js';
 import { Newline, Text, TextContent } from '../node/text.js';
+import { Scene } from '../scene/scene.js';
+import { Node } from '../node/node.js';
+import { log } from '../util/logger.js';
 
-type KliNode = Container | TextContainer | Text | TextContent | Newline;
+type KliNode = Container | TextContainer | Text | TextContent | Newline | Scene;
 
-const { render, createApp } = createRenderer<KliNode, KliNode>({
+const renderer = createRenderer<KliNode, KliNode>({
     createElement: function (type: string): KliNode {
+        // log("createElement", type);
         switch (type) {
             case 'box':
                 return new Container();
@@ -22,6 +26,7 @@ const { render, createApp } = createRenderer<KliNode, KliNode>({
         }
     },
     createText: function (text: string): KliNode {
+        // log("createText", text);
         const text_content = new TextContent();
         text_content.content = text;
         return text_content;
@@ -31,15 +36,22 @@ const { render, createApp } = createRenderer<KliNode, KliNode>({
     },
 
     patchProp: function (el: KliNode, key: string, prevValue: any, nextValue: any): void {
+        // log(key, nextValue);
         if (key in el) {
             (el as any)[key] = nextValue;
         }
     },
     parentNode: function (node: KliNode): KliNode | null {
+        // log("parentNode");
         return node.parent ?? null;
     },
 
     insert: function (el: KliNode, parent: KliNode, anchor?: KliNode | null | undefined): void {
+        // log("insert");
+        if (parent instanceof Scene) {
+            const index = anchor ? parent.get_child_index(anchor as any) : undefined;
+            parent.add_child(el as any, index);
+        }
         if (parent instanceof Container) {
             if (el instanceof Container || el instanceof TextContainer) {
                 const index = anchor ? parent.get_child_index(anchor as any) : undefined;
@@ -74,6 +86,7 @@ const { render, createApp } = createRenderer<KliNode, KliNode>({
         }
     },
     remove: function (el: KliNode): void {
+        // console.log("remove");
         if (el.parent !== undefined) {
             if (el.parent.remove_child(el)) {
                 el.dispose(true);
@@ -82,6 +95,7 @@ const { render, createApp } = createRenderer<KliNode, KliNode>({
     },
 
     setText: function (node: KliNode, str: string): void {
+        // log(">>> setting text", str);
         if (node instanceof TextContent) {
             node.content = str;
         }
@@ -90,6 +104,7 @@ const { render, createApp } = createRenderer<KliNode, KliNode>({
         }
     },
     setElementText: function (node: KliNode, str: string): void {
+        // log(">>> setting element text", str);
         if (node instanceof TextContainer) {
             node.clear_text()?.dispose(true);
             const text = new Text();
@@ -132,4 +147,6 @@ const { render, createApp } = createRenderer<KliNode, KliNode>({
     }
 });
 
-export { render, createApp };
+export function createKliApp(rootComponent: Component) {
+    return renderer.createApp(rootComponent);
+}

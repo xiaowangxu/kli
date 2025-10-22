@@ -1,4 +1,4 @@
-import Yoga, { MeasureMode as YogaMeasureMode, Node as YogaNode } from "yoga-layout";
+import Yoga, { Overflow, MeasureMode as YogaMeasureMode, Node as YogaNode } from "yoga-layout";
 import { LayoutContainer, LayoutLeaf } from "../layout/layout.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 import { Text, TextContent } from "./text.js";
@@ -11,13 +11,8 @@ import { Rect } from "../util/rect.js";
 import { Position } from "../util/position.js";
 import { BoxStyle } from "../style/box_style.js";
 import { execute_shader, Shader } from "../style/shader.js";
-import { merge_text_styles, TextStyle } from "../style/text_style.js";
+import { merge_text_styles, TextLayoutStyle, TextStyle } from "../style/text_style.js";
 import { log } from "../util/logger.js";
-
-export enum Overflow {
-    Visible,
-    Hidden,
-}
 
 export class Container extends LayoutContainer<Container | TextContainer> implements BorderStyle, BoxStyle {
 
@@ -58,12 +53,6 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
 
     public readonly children: (Container | TextContainer)[] = [];
 
-    protected _overflow: Overflow = Overflow.Visible;
-
-    set overflow(v: Overflow) {
-        this._overflow = v;
-    }
-
     public get_unstyled_text_content(): string {
         return this.children.map(c => c.get_unstyled_text_content()).join('\n');
     }
@@ -100,11 +89,11 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
         render.draw_string(rect.x + 2, rect.y, ` 😊 ${this.get_content_rect().width}x${this.get_content_rect().height} `);
         // render.draw_char(rect.x + 2, rect.y, 1, 1, `👩🏾‍👧🏼‍👦🏿`);
 
-        if (this._overflow === Overflow.Hidden) render.push_mask(this.get_content_rect());
+        if (this.layout_node.getOverflow() !== Overflow.Visible) render.push_mask(this.get_content_rect());
         for (const child of this.children) {
             child.draw(render, true);
         }
-        if (this._overflow === Overflow.Hidden) render.pop_mask();
+        if (this.layout_node.getOverflow() !== Overflow.Visible) render.pop_mask();
     }
 
     public get_inner_offset(): Position {
@@ -136,7 +125,7 @@ export enum CollectInlineSpansResult {
 }
 type CollectInlineSpans = (content: string, width: number, will_overflow: boolean) => CollectInlineSpansResult;
 
-export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
+export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayoutStyle {
 
     public readonly layout_node: YogaNode = Yoga.Node.createWithConfig(DefaultLayoutConfig);
 
@@ -319,15 +308,6 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
             return this.text_spans[index + offset];
         }
 
-        const pop_span = () => {
-            const span = this.text_spans[index];
-            if (span !== undefined) {
-                span.x = -1;
-                span.y = -1;
-                index++;
-            }
-        }
-
         const collect_inline_span: CollectInlineSpans[] = [
             // [TextBreak.All] 
             (content, width, will_overflow) => {
@@ -361,6 +341,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
             undefined,
             // [TextBreak.Word]
             (content) => {
+                log("stop_inline_hidden", content);
                 return content === ' ' || content === '-';
             },
         ];
@@ -484,6 +465,8 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
                     if (content !== undefined && (stop_inline_hidden[text_break]?.(content) ?? false)) {
                         new_line(true);
                         still_same_line = false;
+                        span.x = -1;
+                        span.y = -1;
                         index++;
                         break;
                     }

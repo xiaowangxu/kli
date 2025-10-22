@@ -1,4 +1,4 @@
-import Yoga, { Wrap as YogaWrap, PositionType as YogaPositionType, Node as YogaNode, Align as YogaAlign, Justify as YogaJustify, FlexDirection as YogaFlexDirection, Display as YogaDisplay, Gutter as YogaGutter, Edge as YogaEdge, BoxSizing as YogaBoxSizing } from "yoga-layout";
+import Yoga, { Wrap as YogaWrap, PositionType as YogaPositionType, Node as YogaNode, Align as YogaAlign, Justify as YogaJustify, FlexDirection as YogaFlexDirection, Display as YogaDisplay, Gutter as YogaGutter, Edge as YogaEdge, BoxSizing as YogaBoxSizing, Overflow as YogaOverflow } from "yoga-layout";
 import { Node, NodeWithChildren } from "../node/node.js";
 import DefaultLayoutConfig from "./config.js";
 import { Rect } from "../util/rect.js";
@@ -11,8 +11,8 @@ export interface LayoutLeaf {
     get_inner_offset(): Position;
 }
 
-type YogaValue = number | `${number}%` | undefined;
-type YogaValueAuto = number | 'auto' | `${number}%` | undefined;
+export type YogaValue = number | `${number}%` | undefined;
+export type YogaValueAuto = number | 'auto' | `${number}%` | undefined;
 
 export interface LayoutNode extends LayoutLeaf {
     set align_content(v: YogaAlign);
@@ -67,6 +67,7 @@ export interface LayoutNode extends LayoutLeaf {
     set border_horizontal(v: number | undefined);
     set border_vertical(v: number | undefined);
     set box_sizing(v: YogaBoxSizing);
+    set overflow(v: YogaOverflow);
 }
 
 export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | LayoutNode) = Node & (LayoutLeaf | LayoutNode)> extends NodeWithChildren<Children> implements LayoutNode {
@@ -125,6 +126,7 @@ export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | Layo
     set border_horizontal(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_HORIZONTAL, v); }
     set border_vertical(v: number | undefined) { this.layout_node.setBorder(Yoga.EDGE_VERTICAL, v); }
     set box_sizing(v: YogaBoxSizing) { this.layout_node.setBoxSizing(v); }
+    set overflow(v: YogaOverflow) { this.layout_node.setOverflow(v); }
 
     protected on_child_addeded(node: LayoutLeaf | LayoutNode): void {
         this.layout_node.insertChild(node.layout_node, this.layout_node.getChildCount());

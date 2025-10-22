@@ -1,6 +1,7 @@
 import { LayoutContainer, LayoutLeaf, LayoutNode } from "../layout/layout.js";
 import { Node } from "../node/node.js";
 import { Renderer } from "../render/renderer.js";
+import { log } from "../util/logger.js";
 import { Position } from "../util/position.js";
 import { Signal } from "../util/signal.js";
 
@@ -11,6 +12,19 @@ export class Scene extends LayoutContainer {
     public readonly on_changed: Signal<() => void> = new Signal();
 
     protected readonly screen_size: Position = Position.of(0, 0);
+
+    protected on_child_addeded(node: LayoutLeaf | LayoutNode): void {
+        super.on_child_addeded(node);
+        this.notify_change();
+    }
+    protected on_child_removed(node: LayoutLeaf | LayoutNode): void {
+        super.on_child_removed(node);
+        this.notify_change();
+    }
+    protected on_child_moved(node: LayoutLeaf | LayoutNode, from: number, to: number): void {
+        super.on_child_moved(node, from, to);
+        this.notify_change();
+    }
 
     public calculate_layout(width: number, height: number) {
         this.screen_size.x = width;

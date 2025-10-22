@@ -1,4 +1,10 @@
+import { TextBreak, TextWrap } from "../node/container.js";
 import { Color } from "../util/color.js";
+
+export interface TextLayoutStyle {
+    text_wrap: TextWrap | undefined;
+    text_break: TextBreak | undefined;
+}
 
 export interface TextStyle {
     color: Color | undefined;

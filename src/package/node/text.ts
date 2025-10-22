@@ -1,11 +1,11 @@
 import { Renderer } from "../render/renderer.js";
 import { Scene } from "../scene/scene.js";
-import { TextStyle } from "../style/text_style.js";
+import { TextLayoutStyle, TextStyle } from "../style/text_style.js";
 import { Color } from "../util/color.js";
 import { TextBreak, TextContainer, TextWrap } from "./container.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 
-export class Text extends NodeWithChildren<Text | TextContent | Newline> implements TextStyle {
+export class Text extends NodeWithChildren<Text | TextContent | Newline> implements TextStyle, TextLayoutStyle {
 
     public readonly children: (Text | TextContent | Newline)[] = [];
 
