@@ -222,6 +222,10 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         });
     }
 
+    get_next_sibling(node: Text): Text | undefined {
+        return undefined;
+    }
+
     get_unstyled_text_content(): string {
         return this.text?.get_unstyled_text_content?.() ?? '';
     }
@@ -516,22 +520,19 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         this.notify_text_change();
     }
 
-    public clear_text(): boolean {
-        if (this.text === undefined) return false;
-        if (this.remove_child(this.text)) {
-            return true;
-        }
-        return false;
+    public clear_text(): Text | undefined {
+        return this.text !== undefined ? this.remove_child(this.text) : undefined;
     }
 
-    public remove_child(node: Text): boolean {
+    public remove_child(node: Text): Text | undefined {
         if (node.parent === this && this.text === node) {
+            const text = this.text;
             this.text = undefined;
             node.parent = undefined;
             this.notify_text_change();
-            return true;
+            return text;
         }
-        return false;
+        return undefined;
     }
 
     public get_scene(): Scene | undefined {

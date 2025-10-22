@@ -1,10 +1,14 @@
-import { defineConfig } from 'tsup';
+import { defineConfig } from 'tsup'
+import vueJsx from 'esbuild-plugin-vue-jsx'
 
 export default defineConfig({
-    entry: ['src/dev.ts'],
+    entry: ['src/index.tsx'],
     format: ['esm', 'cjs'],
     dts: true,
-    sourcemap: true,
     clean: true,
-    target: 'node20',
+    sourcemap: true,
+    esbuildPlugins: [vueJsx()],
+    platform: 'node',
+    external: ['vue'],
+    outDir: 'dist'
 });

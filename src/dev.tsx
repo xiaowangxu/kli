@@ -244,17 +244,187 @@ scene.add_child(box);
 //     input.dispose();
 // });
 
-import { createSSRApp } from 'vue'
+import { createSSRApp, PropType } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { defineComponent, ref, reactive } from 'vue'
 
-const app = createSSRApp({
-    data() {
-        return {
-            message: 'Hello from SSR'
-        }
-    },
-    template: `<div>{{ message }}</div>`
+const Counter = defineComponent({
+    name: 'Counter',
+    setup() {
+        const count = ref(0)
+        const increment = () => count.value++
+        const decrement = () => count.value--
+
+        return () => (
+            <div class="counter">
+                <h2>计数器组件</h2>
+                <p>当前计数: {count.value}</p>
+                <button onClick={increment}>+1</button>
+                <button onClick={decrement}>-1</button>
+            </div>
+        )
+    }
 })
 
-const html = await renderToString(app)
-console.log(html)
+interface Todo {
+    id: number
+    text: string
+    completed: boolean
+}
+
+const TodoList = defineComponent({
+    name: 'TodoList',
+    setup() {
+        const todos = reactive<Todo[]>([
+            { id: 1, text: '学习 Vue 3', completed: false },
+            { id: 2, text: '学习 TSX', completed: false }
+        ])
+        const newTodo = ref('')
+
+        const addTodo = () => {
+            if (newTodo.value.trim()) {
+                todos.push({
+                    id: Date.now(),
+                    text: newTodo.value,
+                    completed: false
+                })
+                newTodo.value = ''
+            }
+        }
+
+        const toggleTodo = (id: number) => {
+            const todo = todos.find(t => t.id === id)
+            if (todo) todo.completed = !todo.completed
+        }
+
+        const removeTodo = (id: number) => {
+            const index = todos.findIndex(t => t.id === id)
+            if (index > -1) todos.splice(index, 1)
+        }
+
+        return () => (
+            <div class="todo-list">
+                <h2>Todo 列表</h2>
+                <div class="input-group">
+                    <input
+                        type="text"
+                        value={newTodo.value}
+                        placeholder="添加新任务..."
+                    />
+                    <button onClick={addTodo}>添加</button>
+                </div>
+                <ul>
+                    {todos.map(todo => (
+                        <li
+                            key={todo.id}
+                            class={todo.completed ? 'completed' : ''}
+                            onClick={() => toggleTodo(todo.id)}
+                        >
+                            <span>{todo.text}</span>
+                            <button>删除</button>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+        )
+    }
+})
+
+const ConditionalRender = defineComponent({
+    name: 'ConditionalRender',
+    setup() {
+        const show = ref(true)
+        const type = ref<'success' | 'error'>('success')
+
+        return () => (
+            <div class="conditional">
+                <h2>条件渲染</h2>
+                <button onClick={() => show.value = !show.value}>
+                    {show.value ? '隐藏' : '显示'}
+                </button>
+                <button onClick={() => type.value = type.value === 'success' ? 'error' : 'success'}>
+                    切换类型
+                </button>
+                {show.value && (
+                    <p class={type.value}>
+                        这是一条 {type.value} 消息
+                    </p>
+                )}
+            </div>
+        )
+    }
+})
+
+interface User {
+    name: string
+    age: number
+}
+
+const UserCard = defineComponent({
+    name: 'UserCard',
+    props: {
+        user: {
+            type: Object as PropType<User>,
+            required: true
+        },
+        showAge: {
+            type: Boolean,
+            default: true
+        }
+    },
+    emits: ['update'],
+    setup(props, { emit }) {
+        const handleUpdate = () => {
+            emit('update', props.user.name)
+        }
+
+        return () => (
+            <div class="user-card">
+                <h3>{props.user.name}</h3>
+                {props.showAge && <p>年龄: {props.user.age}</p>}
+                <button onClick={handleUpdate}>更新</button>
+            </div>
+        )
+    }
+})
+
+const App = defineComponent({
+    name: 'App',
+    setup() {
+        const user = ref({ name: 'Alice', age: 25 })
+
+        const handleUserUpdate = (name: string) => {
+            console.log('User updated:', name)
+        }
+
+        return () => (
+            <div id="app">
+                <h1>Vue 3 + TSX 示例</h1>
+
+                <Counter />
+
+                <TodoList />
+
+                <ConditionalRender />
+
+                <UserCard
+                    user={user.value}
+                    showAge={true}
+                    onUpdate={handleUserUpdate}
+                />
+            </div>
+        )
+    }
+})
+
+async function render() {
+    const app = createSSRApp(App)
+    const html = await renderToString(app)
+
+    console.log('Rendered HTML:')
+    console.log(html)
+
+    return html
+}
+
+render().catch(console.error)

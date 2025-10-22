@@ -10,7 +10,8 @@ export interface Node {
 }
 
 export interface NodeWithChild<Child extends Node> extends Node {
-    remove_child(node: Child): boolean;
+    remove_child(node: Child): Child | undefined;
+    get_next_sibling(node: Child): Child | undefined;
 }
 
 export abstract class NodeWithChildren<Children extends Node> implements NodeWithChild<Children> {
@@ -20,24 +21,47 @@ export abstract class NodeWithChildren<Children extends Node> implements NodeWit
 
     public abstract get_unstyled_text_content(): string;
 
-    public add_child(node: Children): void {
+    public get_child_index(node: Children) {
+        return this.children.indexOf(node);
+    }
+
+    public get_child(index: number) {
+        return this.children[index];
+    }
+
+    public get_next_sibling(node: Children): Children | undefined {
+        const index = this.get_child_index(node);
+        if (index < 0) return undefined;
+        return this.children[index + 1];
+    }
+
+    public add_child(node: Children, index?: number): void {
         if (node as any === this) return;
         if (node.parent !== undefined) node.parent.remove_child(node);
         node.parent = this;
-        this.children.push(node);
+        if (index === undefined) {
+            this.children.push(node);
+        }
+        else {
+            this.children.splice(index, 0, node);
+        }
         this.on_child_addeded(node);
     }
 
     protected abstract on_child_addeded(node: Children): void;
 
-    public remove_child(node: Children): boolean {
-        if (node.parent !== undefined) return false;
+    public get_children_count() {
+        return this.children.length;
+    }
+
+    public remove_child(node: Children): Children | undefined {
+        if (node.parent !== undefined) return undefined;
         const index = this.children.indexOf(node);
-        if (index < 0) return false;
+        if (index < 0) return undefined;
         node.parent = undefined;
         this.children.splice(index, 1);
         this.on_child_removed(node);
-        return true;
+        return node;
     }
 
     protected abstract on_child_removed(node: Children): void;
