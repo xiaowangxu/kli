@@ -3,7 +3,7 @@ import { LayoutContainer, LayoutLeaf } from "../layout/layout.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 import { Text, TextContent } from "./text.js";
 import DefaultLayoutConfig from "../layout/config.js";
-import { calculate_char_width, calculate_string_width, emoji_regax, Renderer, split_string_with_width } from "../render/renderer.js";
+import { calculate_char_region, calculate_char_width, calculate_string_width, emoji_regax, Renderer, split_string_with_width } from "../render/renderer.js";
 import { Color } from "../util/color.js";
 import { BorderStyle, BorderType } from "../style/border_style.js";
 import { Scene } from "../scene/scene.js";
@@ -97,7 +97,7 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
 
         if (this.border_type !== undefined) render.draw_box_border(rect, this.border_type, { color: this.border_color }, false);
 
-        render.draw_string(rect.x + 2, rect.y, ` 😊 ${this.offset.x}x${this.offset.y} `);
+        render.draw_string(rect.x + 2, rect.y, ` 😊 ${this.get_content_rect().width}x${this.get_content_rect().height} `);
         // render.draw_char(rect.x + 2, rect.y, 1, 1, `👩🏾‍👧🏼‍👦🏿`);
 
         if (this._overflow === Overflow.Hidden) render.push_mask(this.get_content_rect());
@@ -120,16 +120,28 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
 export enum TextWrap {
     Wrap,
     NoWrap,
-    WrapWord,
+}
+export enum TextBreak {
+    All = 0,
+    KeepAll = 1,
+    Word = 2,
 }
 
-type TextContainerSpan = { content?: string, override?: string, x: number, y: number, width: number, text_wrap?: TextWrap, text_style?: Partial<TextStyle>, newline: boolean };
+type TextContainerSpan = { content?: string, override?: string, x: number, y: number, width: number, text_wrap?: TextWrap, text_break?: TextBreak, text_style?: Partial<TextStyle>, newline: boolean };
+export enum CollectInlineSpansResult {
+    AppendBreak,
+    AppendNotBreak,
+    NotAppendBreak,
+    NotAppendNotBreak,
+}
+type CollectInlineSpans = (content: string, width: number, will_overflow: boolean) => CollectInlineSpansResult;
 
 export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
 
     public readonly layout_node: YogaNode = Yoga.Node.createWithConfig(DefaultLayoutConfig);
 
     protected _text_wrap: TextWrap = TextWrap.Wrap;
+    protected _text_break: TextBreak = TextBreak.Word;
     protected _mask: boolean = false;
 
     get text_wrap(): TextWrap {
@@ -137,6 +149,13 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
     }
     set text_wrap(v: TextWrap | undefined) {
         this._text_wrap = v ?? TextWrap.Wrap;
+        this.notify_layout_change();
+    }
+    get text_break(): TextBreak {
+        return this._text_break;
+    }
+    set text_break(v: TextBreak | undefined) {
+        this._text_break = v ?? TextBreak.Word;
         this.notify_layout_change();
     }
     get mask(): boolean {
@@ -150,7 +169,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
     parent: NodeWithChild<Node> | undefined;
     public text: Text | undefined;
 
-    protected text_spans: TextContainerSpan[] = [];
+    public text_spans: TextContainerSpan[] = [];
 
     constructor() {
         this.layout_node.setMeasureFunc((width: number, width_mode: YogaMeasureMode, height: number, height_mode: YogaMeasureMode) => {
@@ -217,10 +236,10 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         this.notify_layout_change();
     }
 
-    protected push_text_spans(text: Text, base_style: Partial<TextStyle>, target: TextContainerSpan[]) {
+    protected push_text_spans(text: Text, base_style: Partial<TextStyle>, text_wrap: TextWrap | undefined, text_break: TextBreak | undefined, target: TextContainerSpan[]) {
         for (const child of text.children) {
             if (child instanceof Text) {
-                this.push_text_spans(child, merge_text_styles(base_style, child), target);
+                this.push_text_spans(child, merge_text_styles(base_style, child), text.text_wrap ?? text_wrap, text.text_break ?? text_break, target);
             }
             else if (child instanceof TextContent) {
                 if (child.content !== undefined) {
@@ -232,19 +251,20 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
                             target.push({
                                 content: char,
                                 width: width,
-                                text_wrap: text.text_wrap,
+                                text_wrap: text.text_wrap ?? text_wrap,
+                                text_break: text.text_break ?? text_break,
                                 text_style: style,
                                 newline: false,
-                                x: 0,
-                                y: 0,
+                                x: -1,
+                                y: -1,
                             });
                         });
                         if (i < lines.length - 1) {
                             target.push({
                                 width: 1,
                                 newline: true,
-                                x: 0,
-                                y: 0,
+                                x: -1,
+                                y: -1,
                             });
                         }
                     }
@@ -254,8 +274,8 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
                 target.push({
                     width: 1,
                     newline: true,
-                    x: 0,
-                    y: 0,
+                    x: -1,
+                    y: -1,
                 });
             }
         }
@@ -264,10 +284,10 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
     protected update_text_spans() {
         this.text_spans = [];
         if (this.text === undefined) return;
-        this.push_text_spans(this.text, {}, this.text_spans);
+        this.push_text_spans(this.text, {}, undefined, undefined, this.text_spans);
     }
 
-    protected wrap_text_spans(max_width: number, max_height: number = Infinity, non_fit_char: string = '*') {
+    public wrap_text_spans(max_width: number, max_height: number = Infinity, non_fit_char: string = '*') {
         if (max_width <= 0 || max_height <= 0) {
             return {
                 width: 0,
@@ -275,10 +295,14 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
             };
         }
 
+        const text_spans_count = this.text_spans.length;
+
         let result_width = 0;
         let result_height = 0;
         let current_width = 0;
         let soft_newline = false;
+
+        let index = 0;
 
         function new_line(soft: boolean) {
             result_height++;
@@ -287,98 +311,195 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
             soft_newline = soft;
         }
 
-        function push_inline(span: TextContainerSpan, auto_soft_newline: boolean) {
-            soft_newline = false;
-            span.x = current_width;
-            span.y = result_height - 1;
-            current_width += span.width;
-            if (auto_soft_newline && current_width >= max_width) {
-                new_line(true);
+        const peek_span = (offset: number = 0) => {
+            return this.text_spans[index + offset];
+        }
+
+        const pop_span = () => {
+            const span = this.text_spans[index];
+            if (span !== undefined) {
+                span.x = -1;
+                span.y = -1;
+                index++;
             }
         }
 
-        const spans = [...this.text_spans];
+        const collect_inline_span: CollectInlineSpans[] = [
+            // [TextBreak.All] 
+            (content, width, will_overflow) => {
+                return will_overflow ? CollectInlineSpansResult.NotAppendBreak : CollectInlineSpansResult.AppendBreak;
+            },
+            // [TextBreak.KeepAll]
+            (content, width, will_overflow) => {
+                return will_overflow ? CollectInlineSpansResult.NotAppendBreak : CollectInlineSpansResult.AppendNotBreak;
+            },
+            // [TextBreak.Word]
+            (content, width, will_overflow) => {
+                return will_overflow ? (
+                    content === ' ' || content === '-' ?
+                        CollectInlineSpansResult.AppendBreak :
+                        (
+                            width > 1 ?
+                                CollectInlineSpansResult.NotAppendBreak :
+                                CollectInlineSpansResult.NotAppendNotBreak
+                        )
+                ) : (
+                    content === ' ' || content === '-' || width > 1 ?
+                        CollectInlineSpansResult.AppendBreak :
+                        CollectInlineSpansResult.AppendNotBreak
+                );
+            },
+        ];
+        const stop_inline_hidden: (((content: string) => boolean) | undefined)[] = [
+            // [TextBreak.All] 
+            undefined,
+            // [TextBreak.KeepAll]
+            undefined,
+            // [TextBreak.Word]
+            (content) => {
+                return content === ' ' || content === '-';
+            },
+        ];
 
-        function peek_span(index: number = 0) {
-            return spans[index];
-        }
+        while (index < text_spans_count) {
 
-        function pop_span() {
-            return spans.shift();
-        }
+            while (true) {
 
-        while (spans.length > 0) {
-            const span = peek_span();
-            const { content, width, text_wrap, newline } = span;
-            const wrap = text_wrap ?? this.text_wrap;
-            if (width > 0) result_height = Math.max(result_height, 1);
-            else {
-                pop_span();
-                continue;
-            }
-            if (!newline) {
-                if (content === undefined) continue;
+                let current_inline_x = 0;
+                let current_max_inline_x = 0;
 
-                if (wrap === TextWrap.Wrap) {
-                    if (current_width + width <= max_width) {
-                        pop_span();
-                        push_inline(span, true);
+                let current_span_width = 0;
+                let current_index_offset = 0;
+                let current_has_content = false;
+                let last_text_break = undefined;
+                while (true) {
+                    const span = peek_span(current_index_offset);
+                    if (span === undefined) {
+                        current_max_inline_x = current_index_offset;
+                        break;
                     }
-                    else new_line(true);
+                    const { content, newline, width, text_break = this.text_break } = span;
+                    if (width > 0) {
+                        result_height = Math.max(result_height, 1);
+                    }
+                    if (newline) {
+                        current_max_inline_x = current_index_offset;
+                        current_has_content = current_index_offset > 0;
+                        break;
+                    }
+                    if (last_text_break === undefined) {
+                        last_text_break = text_break;
+                    }
+                    else if (last_text_break !== text_break) {
+                        current_max_inline_x = current_index_offset;
+                        current_has_content = true;
+                        last_text_break = text_break;
+                    }
+                    else if (content !== undefined) {
+                        const append_will_overflow = current_inline_x + current_span_width + width > max_width;
+                        const append = collect_inline_span[text_break](content, width, append_will_overflow);
+                        let finish_inline = false;
+                        switch (append) {
+                            case CollectInlineSpansResult.AppendBreak: {
+                                current_index_offset++;
+                                current_max_inline_x = current_index_offset;
+                                current_has_content = true;
+                                break;
+                            }
+                            case CollectInlineSpansResult.AppendNotBreak: {
+                                current_index_offset++;
+                                break;
+                            }
+                            case CollectInlineSpansResult.NotAppendNotBreak: {
+                                finish_inline = true;
+                                break;
+                            }
+                            case CollectInlineSpansResult.NotAppendBreak: {
+                                current_max_inline_x = current_index_offset;
+                                finish_inline = true;
+                                break;
+                            }
+                        }
+                        if (finish_inline) break;
+                        current_span_width += width;
+                    }
                 }
-                else if (wrap === TextWrap.NoWrap) {
-                    if (current_width + width <= max_width) {
-                        pop_span();
-                        push_inline(span, false);
+
+                // append span
+                if (current_max_inline_x > 0) {
+                    current_has_content = true;
+                    soft_newline = false;
+                    for (let i = 0; i < current_max_inline_x; i++) {
+                        const span = this.text_spans[index++];
+                        span.x = current_inline_x;
+                        span.y = result_height - 1;
+                        current_inline_x += span.width;
                     }
-                    else {
-                        while (!(peek_span()?.newline ?? true)) pop_span();
-                    }
+                    result_width = Math.max(result_width, current_inline_x);
                 }
-                else if (wrap === TextWrap.WrapWord) {
-                    let index = 0;
-                    let word_width = 0;
-                    let found = false;
-                    while (true) {
-                        const span = peek_span(index);
-                        if (span === undefined) break;
-                        if (span.newline) {
-                            found = true;
-                            break;
-                        }
-                        word_width += span.width;
-                        if (current_width + word_width > max_width) {
-                            new_line(true);
-                            found = false;
-                            break;
-                        }
-                        if (span.content === ' ' || span.content === '-') {
-                            found = true;
-                            break;
-                        }
+                // deal with line remain
+                const inline_remain = current_index_offset - current_max_inline_x
+                let force_text_wrap: TextWrap | undefined;
+                if (inline_remain > 0 && !current_has_content) {
+                    soft_newline = false;
+                    for (let i = 0; i < inline_remain; i++) {
+                        const span = this.text_spans[index++];
+                        span.x = current_inline_x;
+                        span.y = result_height - 1;
+                        current_inline_x += span.width;
+                    }
+                    result_width = Math.max(result_width, current_inline_x);
+                    force_text_wrap = TextWrap.NoWrap;
+                }
+                if (inline_remain <= 0 && !current_has_content) {
+                    soft_newline = false;
+                    force_text_wrap = TextWrap.NoWrap;
+                }
+
+                // deal with remain
+                let still_same_line = true;
+                while (true) {
+                    const span = peek_span();
+                    if (span === undefined) {
+                        still_same_line = false;
+                        break;
+                    }
+                    const { content, newline, text_wrap, text_break = this.text_break } = span;
+                    if (newline) {
+                        new_line(false);
+                        still_same_line = false;
+                        index++;
+                        break;
+                    }
+                    if (last_text_break !== undefined && last_text_break !== text_break) {
+                        new_line(true);
+                        still_same_line = false;
+                        break;
+                    }
+                    let modified_text_wrap = force_text_wrap ?? text_wrap ?? this.text_wrap;
+                    if (content !== undefined && (stop_inline_hidden[text_break]?.(content) ?? false)) {
+                        new_line(true);
+                        still_same_line = false;
+                        index++;
+                        break;
+                    }
+                    else if (modified_text_wrap === TextWrap.NoWrap) {
+                        span.x = -1;
+                        span.y = -1;
                         index++;
                     }
-                    if (found) {
-                        for (let i = 0; i <= index; i++) {
-                            const span = pop_span()!;
-                            if (span.newline) {
-                                new_line(false);
-                            }
-                            else {
-                                push_inline(span, false);
-                            }
-                        }
-                    }
                     else {
-                        
+                        new_line(true);
+                        still_same_line = false;
+                        break;
                     }
                 }
+
+                if (!still_same_line) break;
             }
-            else {
-                pop_span();
-                new_line(false);
-            }
+
         }
+
         return {
             width: result_width,
             height: soft_newline ? result_height - 1 : result_height,
@@ -429,6 +550,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf {
         }
         for (const span of this.text_spans) {
             const { content, override, x, y, text_style } = span;
+            if (x < 0 || y < 0) continue;
             if (override === undefined && content === undefined) continue;
             render.draw_string(content_rect.x + x, content_rect.y + y, (override ?? content)!, text_style, false);
         }

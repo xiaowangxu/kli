@@ -21,6 +21,7 @@ export abstract class NodeWithChildren<Children extends Node> implements NodeWit
     public abstract get_unstyled_text_content(): string;
 
     public add_child(node: Children): void {
+        if (node as any === this) return;
         if (node.parent !== undefined) node.parent.remove_child(node);
         node.parent = this;
         this.children.push(node);

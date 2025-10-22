@@ -2,7 +2,7 @@ import { Renderer } from "../render/renderer.js";
 import { Scene } from "../scene/scene.js";
 import { TextStyle } from "../style/text_style.js";
 import { Color } from "../util/color.js";
-import { TextContainer, TextWrap } from "./container.js";
+import { TextBreak, TextContainer, TextWrap } from "./container.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 
 export class Text extends NodeWithChildren<Text | TextContent | Newline> implements TextStyle {
@@ -16,12 +16,20 @@ export class Text extends NodeWithChildren<Text | TextContent | Newline> impleme
     public underline: boolean | undefined;
 
     protected _text_wrap: TextWrap | undefined;
+    protected _text_break: TextBreak | undefined;
 
     get text_wrap() {
         return this._text_wrap;
     }
     set text_wrap(v: TextWrap | undefined) {
         this._text_wrap = v;
+        this.get_text_container()?.notify_layout_change();
+    }
+    get text_break() {
+        return this._text_break;
+    }
+    set text_break(v: TextBreak | undefined) {
+        this._text_break = v;
         this.get_text_container()?.notify_layout_change();
     }
 
@@ -41,9 +49,11 @@ export class Text extends NodeWithChildren<Text | TextContent | Newline> impleme
         this.get_text_container()?.notify_text_change();
     }
 
-    public get_text_container() {
+    public get_text_container(): TextContainer | undefined {
         if (this.parent === undefined) return undefined;
-        return this.parent instanceof TextContainer ? this.parent : undefined;
+        if (this.parent instanceof TextContainer) return this.parent;
+        if (this.parent instanceof Text) return this.parent.get_text_container();
+        return undefined;
     }
 
     public get_scene(): Scene | undefined {
