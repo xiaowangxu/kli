@@ -9,22 +9,25 @@
 	"main": "dist/index.cjs",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"imports": {
+		"#renderer": "./src/package/solid/render.ts"
+	},
 	"scripts": {
-		"dev": "tsx watch src/dev.ts",
+		"run": "node dist/dev.js",
+		"dev": "tsup --watch",
 		"build": "tsup",
 		"start": "tsup && node dist/dev.js",
 		"clean": "rm -rf dist"
 	},
 	"devDependencies": {
 		"@types/node": "^24.8.0",
+		"esbuild-plugin-solid": "^0.6.0",
 		"tsup": "^8.5.0",
-		"tsx": "^4.20.6",
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
 		"chalk": "^5.6.2",
-		"readline": "^1.3.0",
-		"vue": "^3.5.22",
+		"solid-js": "^1.9.9",
 		"yoga-layout": "^3.2.1"
 	}
 }

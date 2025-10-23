@@ -33,10 +33,6 @@ export class Text extends NodeWithChildren<Text | TextContent | Newline> impleme
         this.get_text_container()?.notify_layout_change();
     }
 
-    public get_unstyled_text_content(): string {
-        return this.children.map(c => c.get_unstyled_text_content()).join('');
-    }
-
     protected on_child_addeded(node: Text | TextContent | Newline): void {
         this.get_text_container()?.notify_text_change();
     }
@@ -74,16 +70,10 @@ export class Text extends NodeWithChildren<Text | TextContent | Newline> impleme
 
 }
 
-export class TextContent implements Node, TextStyle {
+export class TextContent implements Node {
 
     public parent: NodeWithChild<Node> | undefined;
     protected _content: string | undefined;
-
-    public color: Color | undefined;
-    public bg_color: Color | undefined;
-    public bold: boolean | undefined;
-    public italic: boolean | undefined;
-    public underline: boolean | undefined;
 
     get content() {
         return this._content;
@@ -106,11 +96,7 @@ export class TextContent implements Node, TextStyle {
         throw new Error("Method not implemented.");
     }
 
-    public get_unstyled_text_content() {
-        return this.content ?? '';
-    }
-
-    public dispose(): void {
+    public dispose(recusive: boolean): void {
 
     }
 
@@ -118,10 +104,6 @@ export class TextContent implements Node, TextStyle {
 
 export class Newline implements Node {
     public parent: NodeWithChild<Node> | undefined;
-
-    get_unstyled_text_content(): string {
-        return '\n';
-    }
 
     draw(render: Renderer): void {
         throw new Error("Method not implemented.");

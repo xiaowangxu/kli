@@ -128,13 +128,13 @@ export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | Layo
     set box_sizing(v: YogaBoxSizing) { this.layout_node.setBoxSizing(v); }
     set overflow(v: YogaOverflow) { this.layout_node.setOverflow(v); }
 
-    protected on_child_addeded(node: LayoutLeaf | LayoutNode): void {
+    protected on_child_addeded(node: Node & (LayoutLeaf | LayoutNode)): void {
         this.layout_node.insertChild(node.layout_node, this.layout_node.getChildCount());
     }
-    protected on_child_removed(node: LayoutLeaf | LayoutNode): void {
+    protected on_child_removed(node: Node & (LayoutLeaf | LayoutNode)): void {
         this.layout_node.removeChild(node.layout_node);
     }
-    protected on_child_moved(node: LayoutLeaf | LayoutNode, from: number, to: number): void {
+    protected on_child_moved(node: Node & (LayoutLeaf | LayoutNode), from: number, to: number): void {
         this.layout_node.removeChild(node.layout_node);
         this.layout_node.insertChild(node.layout_node, to);
     }

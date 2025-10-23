@@ -36,10 +36,6 @@ export class Scene extends LayoutContainer {
         return Position.of(this.screen_size.x, this.screen_size.y);
     }
 
-    public get_unstyled_text_content(): string {
-        throw new Error("Method not implemented.");
-    }
-
     public get_scene(): Scene {
         return this;
     }

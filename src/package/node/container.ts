@@ -1,7 +1,7 @@
 import Yoga, { Overflow, MeasureMode as YogaMeasureMode, Node as YogaNode } from "yoga-layout";
 import { LayoutContainer, LayoutLeaf } from "../layout/layout.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
-import { Text, TextContent } from "./text.js";
+import { Newline, Text, TextContent } from "./text.js";
 import DefaultLayoutConfig from "../layout/config.js";
 import { calculate_char_region, calculate_char_width, calculate_string_width, emoji_regax, Renderer, split_string_with_width } from "../render/renderer.js";
 import { Color } from "../util/color.js";
@@ -53,10 +53,6 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
 
     public readonly children: (Container | TextContainer)[] = [];
 
-    public get_unstyled_text_content(): string {
-        return this.children.map(c => c.get_unstyled_text_content()).join('\n');
-    }
-
     public get_scene(): Scene | undefined {
         return this.parent?.get_scene();
     }
@@ -86,7 +82,7 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
 
         if (this.border_type !== undefined) render.draw_box_border(rect, this.border_type, { color: this.border_color }, false);
 
-        render.draw_string(rect.x + 2, rect.y, ` 😊 ${this.get_content_rect().width}x${this.get_content_rect().height} `);
+        // render.draw_string(rect.x + 2, rect.y, ` 😊 ${this.get_content_rect().width}x${this.get_content_rect().height} `);
         // render.draw_char(rect.x + 2, rect.y, 1, 1, `👩🏾‍👧🏼‍👦🏿`);
 
         if (this.layout_node.getOverflow() !== Overflow.Visible) render.push_mask(this.get_content_rect());
@@ -125,7 +121,7 @@ export enum CollectInlineSpansResult {
 }
 type CollectInlineSpans = (content: string, width: number, will_overflow: boolean) => CollectInlineSpansResult;
 
-export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayoutStyle {
+export class TextContainer extends NodeWithChildren<Text | Newline> implements LayoutLeaf, TextLayoutStyle {
 
     public readonly layout_node: YogaNode = Yoga.Node.createWithConfig(DefaultLayoutConfig);
 
@@ -155,12 +151,24 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayou
         this.get_scene()?.notify_change();
     }
 
-    parent: NodeWithChild<Node> | undefined;
-    public text: Text | undefined;
+    public readonly children: (Text | Newline)[] = [];
+
+    protected on_child_addeded(node: Text | Newline): void {
+        this.notify_text_change();
+    }
+
+    protected on_child_removed(node: Text | Newline): void {
+        this.notify_text_change();
+    }
+
+    protected on_child_moved(node: Text | Newline, from: number, to: number): void {
+        this.notify_text_change();
+    }
 
     public text_spans: TextContainerSpan[] = [];
 
     constructor() {
+        super();
         this.layout_node.setMeasureFunc((width: number, width_mode: YogaMeasureMode, height: number, height_mode: YogaMeasureMode) => {
 
             width = Math.floor(width);
@@ -179,14 +187,14 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayou
             // 根据宽度模式处理
             if (width_mode === Yoga.MEASURE_MODE_EXACTLY) {
                 // 精确宽度：按此宽度换行
-                const { width: wrapped_width, height: wrapped_height } = this.wrap_text_spans(width);
-                measured_width = wrapped_width;
+                const { width: _wrapped_width, height: wrapped_height } = this.wrap_text_spans(width);
+                measured_width = width;
                 measured_height = wrapped_height;
             }
             else if (width_mode === Yoga.MEASURE_MODE_AT_MOST) {
                 // 最大宽度：在此范围内自适应
-                const { width: _wrapped_width, height: wrapped_height } = this.wrap_text_spans(width);
-                measured_width = width;
+                const { width: wrapped_width, height: wrapped_height } = this.wrap_text_spans(width);
+                measured_width = wrapped_width;
                 measured_height = wrapped_height;
             }
             else {
@@ -203,20 +211,15 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayou
             else if (height_mode === Yoga.MEASURE_MODE_AT_MOST) {
                 measured_height = Math.min(measured_height, height);
             }
+            else {
+                measured_height = measured_height;
+            }
 
             return {
                 width: measured_width,
                 height: measured_height
             };
         });
-    }
-
-    get_next_sibling(node: Text): Text | undefined {
-        return undefined;
-    }
-
-    get_unstyled_text_content(): string {
-        return this.text?.get_unstyled_text_content?.() ?? '';
     }
 
     public notify_layout_change() {
@@ -236,7 +239,6 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayou
             }
             else if (child instanceof TextContent) {
                 if (child.content !== undefined) {
-                    const style = merge_text_styles(base_style, child);
                     const lines = child.content.split('\n');
                     for (let i = 0; i < lines.length; i++) {
                         const chars = split_string_with_width(lines[i]);
@@ -246,7 +248,7 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayou
                                 width: width,
                                 text_wrap: text.text_wrap ?? text_wrap,
                                 text_break: text.text_break ?? text_break,
-                                text_style: style,
+                                text_style: base_style,
                                 newline: false,
                                 x: -1,
                                 y: -1,
@@ -276,8 +278,19 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayou
 
     protected update_text_spans() {
         this.text_spans = [];
-        if (this.text === undefined) return;
-        this.push_text_spans(this.text, {}, undefined, undefined, this.text_spans);
+        for (const text of this.children) {
+            if (text instanceof Text) {
+                this.push_text_spans(text, text, undefined, undefined, this.text_spans);
+            }
+            else {
+                this.text_spans.push({
+                    width: 1,
+                    newline: true,
+                    x: -1,
+                    y: -1,
+                });
+            }
+        }
     }
 
     public wrap_text_spans(max_width: number, max_height: number = Infinity, non_fit_char: string = '*') {
@@ -341,7 +354,6 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayou
             undefined,
             // [TextBreak.Word]
             (content) => {
-                log("stop_inline_hidden", content);
                 return content === ' ' || content === '-';
             },
         ];
@@ -493,35 +505,6 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayou
         };
     }
 
-    public set_text(text: Text) {
-        if (text.parent !== undefined) {
-            if (text.parent === this) return;
-            text.parent.remove_child(text);
-        }
-        text.parent = this;
-        this.text = text;
-        this.notify_text_change();
-    }
-
-    public clear_text(): Text | undefined {
-        return this.text !== undefined ? this.remove_child(this.text) : undefined;
-    }
-
-    public remove_child(node: Text): Text | undefined {
-        if (node.parent === this && this.text === node) {
-            const text = this.text;
-            this.text = undefined;
-            node.parent = undefined;
-            this.notify_text_change();
-            return text;
-        }
-        return undefined;
-    }
-
-    public get_scene(): Scene | undefined {
-        return this.parent?.get_scene();
-    }
-
     private last_content_width = -1;
     private last_content_height = -1;
     public draw(render: Renderer): void {
@@ -572,7 +555,9 @@ export class TextContainer implements NodeWithChild<Text>, LayoutLeaf, TextLayou
 
     public dispose(recusive: boolean): void {
         if (recusive) {
-            this.text?.dispose(true);
+            for (const c of this.children) {
+                c.dispose(true);
+            }
         }
         this.layout_node.unsetMeasureFunc();
         this.layout_node.free();

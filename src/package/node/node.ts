@@ -3,7 +3,6 @@ import { Scene } from "../scene/scene.js";
 
 export interface Node {
     parent: NodeWithChild<Node> | undefined;
-    get_unstyled_text_content(): string;
     draw(render: Renderer, force?: boolean): void;
     dispose(recusive: boolean): void;
     get_scene(): Scene | undefined;
@@ -14,12 +13,10 @@ export interface NodeWithChild<Child extends Node> extends Node {
     get_next_sibling(node: Child): Child | undefined;
 }
 
-export abstract class NodeWithChildren<Children extends Node> implements NodeWithChild<Children> {
+export abstract class NodeWithChildren<Children extends Node = Node> implements NodeWithChild<Children> {
 
     public parent: NodeWithChild<Node> | undefined;
     abstract readonly children: Children[];
-
-    public abstract get_unstyled_text_content(): string;
 
     public get_child_index(node: Children) {
         return this.children.indexOf(node);
@@ -35,16 +32,12 @@ export abstract class NodeWithChildren<Children extends Node> implements NodeWit
         return this.children[index + 1];
     }
 
-    public add_child(node: Children, index?: number): void {
+    public add_child(node: Children): void {
         if (node as any === this) return;
+        if (node.parent === this) return;
         if (node.parent !== undefined) node.parent.remove_child(node);
         node.parent = this;
-        if (index === undefined) {
-            this.children.push(node);
-        }
-        else {
-            this.children.splice(index, 0, node);
-        }
+        this.children.push(node);
         this.on_child_addeded(node);
     }
 
@@ -66,15 +59,27 @@ export abstract class NodeWithChildren<Children extends Node> implements NodeWit
 
     protected abstract on_child_removed(node: Children): void;
 
-    public move_child(node: Children, to: number): boolean {
+    public move_child(node: Children, to: number | Children): boolean {
         if (node.parent !== this) return false;
-        if (to < 0) return false;
         const index = this.children.indexOf(node);
         if (index < 0) return false;
-        this.children.splice(index, 1);
-        this.children.splice(to, 0, node);
-        this.on_child_moved(node, index, to);
-        return true;
+        if (typeof to === 'number') {
+            if (to < 0) return false;
+            this.children.splice(index, 1);
+            this.children.splice(to, 0, node);
+            this.on_child_moved(node, index, to);
+            return true;
+        }
+        else {
+            const toIndex = this.children.indexOf(to);
+            if (toIndex < 0) return false;
+            this.children.splice(index, 1);
+            // 如果 node 原本在 to 前面,删除后 to 的索引会减1
+            const newIndex = index < toIndex ? toIndex - 1 : toIndex;
+            this.children.splice(newIndex, 0, node);
+            this.on_child_moved(node, index, newIndex);
+            return true;
+        }
     }
 
     protected abstract on_child_moved(node: Children, from: number, to: number): void;
