@@ -1,4 +1,4 @@
-import Yoga, { Wrap as YogaWrap, PositionType as YogaPositionType, Node as YogaNode, Align as YogaAlign, Justify as YogaJustify, FlexDirection as YogaFlexDirection, Display as YogaDisplay, Gutter as YogaGutter, Edge as YogaEdge, BoxSizing as YogaBoxSizing, Overflow as YogaOverflow } from "yoga-layout";
+import Yoga, { Wrap as YogaWrap, PositionType as YogaPositionType, Node as YogaNode, Align as YogaAlign, Justify as YogaJustify, FlexDirection as YogaFlexDirection, Display as YogaDisplay, BoxSizing as YogaBoxSizing, Overflow as YogaOverflow } from "yoga-layout";
 import { Node, NodeWithChildren } from "../node/node.js";
 import DefaultLayoutConfig from "./config.js";
 import { Rect } from "../util/rect.js";

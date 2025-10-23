@@ -1,9 +1,9 @@
 import Yoga, { Overflow, MeasureMode as YogaMeasureMode, Node as YogaNode } from "yoga-layout";
 import { LayoutContainer, LayoutLeaf } from "../layout/layout.js";
-import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
+import { NodeWithChildren } from "./node.js";
 import { Newline, Text, TextContent } from "./text.js";
 import DefaultLayoutConfig from "../layout/config.js";
-import { calculate_char_region, calculate_char_width, calculate_string_width, emoji_regax, Renderer, split_string_with_width } from "../render/renderer.js";
+import { Renderer, split_string_with_width } from "../render/renderer.js";
 import { Color } from "../util/color.js";
 import { BorderStyle, BorderType } from "../style/border_style.js";
 import { Scene } from "../scene/scene.js";
@@ -12,7 +12,6 @@ import { Position } from "../util/position.js";
 import { BoxStyle } from "../style/box_style.js";
 import { execute_shader, Shader } from "../style/shader.js";
 import { merge_text_styles, TextLayoutStyle, TextStyle } from "../style/text_style.js";
-import { log } from "../util/logger.js";
 
 export class Container extends LayoutContainer<Container | TextContainer> implements BorderStyle, BoxStyle {
 

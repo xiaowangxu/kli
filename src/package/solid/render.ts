@@ -8,7 +8,6 @@ import { Input } from '../input/input.js';
 import { Renderer } from '../render/renderer.js';
 import { Rect } from '../util/rect.js';
 import { JSXElement } from 'solid-js';
-import { log } from '../util/logger.js';
 
 export type KliNode = Node | NodeWithChildren<Node | (Node & (LayoutLeaf | LayoutNode))>;
 

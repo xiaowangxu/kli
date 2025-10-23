@@ -2,7 +2,7 @@ import { Color } from "./package/util/color.js";
 import { BorderStyleType } from "./package/style/border_style.js";
 import { render } from './package/solid/render.js';
 import { createSignal, Index, onCleanup } from 'solid-js';
-import { Align, FlexDirection, Justify, Overflow } from "yoga-layout";
+import { Align, FlexDirection, Justify, Overflow, PositionType } from "yoga-layout";
 import { useDeltaFrame } from "./package/solid/hook/use_delta_frame.js";
 import { Shader } from "./package/style/shader.js";
 
@@ -57,7 +57,7 @@ function Box(props: { name: string }) {
 
 function App() {
 	return (
-		<box width='100%' height='100%' flex_direction={FlexDirection.Row} gap={1} align_items={Align.Stretch}>
+		<box position={PositionType.Relative} width='100%' height='100%' flex_direction={FlexDirection.Row} gap={1} align_items={Align.Stretch}>
 			<box flex_direction={FlexDirection.Column} padding_horizontal={2} padding_vertical={1} flex_grow={1} flex_shrink={1} overflow={Overflow.Scroll} border={1} border_type={BorderStyleType.Round} border_color={Color.of(255, 0, 0)}>
 				<text-box >
 					<text color={Color.of(255, 190, 0)} underline>1234</text>
@@ -164,6 +164,9 @@ for ch in "“”":
 					)}
 				</Index>
 				<Frame />
+			</box>
+			<box position={PositionType.Absolute} bottom={0} right={0} width={20} height={6} border={1} border_type={BorderStyleType.Round} border_color={Color.of(255, 124, 255)}>
+
 			</box>
 		</box>
 	);

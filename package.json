@@ -12,22 +12,34 @@
 	"imports": {
 		"#renderer": "./src/package/solid/render.ts"
 	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.mjs"
+		}
+	},
 	"scripts": {
 		"run": "node dist/dev.js",
-		"dev": "tsup --watch",
-		"build": "tsup",
-		"start": "tsup && node dist/dev.js",
-		"clean": "rm -rf dist"
+		"dev": "tsup --watch --config tsup.config.dev.ts",
+		"build": "tsup --config tsup.config.build.ts",
+		"start": "tsup --config tsup.config.dev.ts && node dist/dev.js"
+	},
+	"files": [
+		"dist"
+	],
+	"peerDependencies": {
+		"solid-js": "^1.8.0"
 	},
 	"devDependencies": {
 		"@types/node": "^24.8.0",
 		"esbuild-plugin-solid": "^0.6.0",
+		"solid-js": "^1.9.9",
 		"tsup": "^8.5.0",
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
 		"chalk": "^5.6.2",
-		"solid-js": "^1.9.9",
 		"yoga-layout": "^3.2.1"
 	}
 }
