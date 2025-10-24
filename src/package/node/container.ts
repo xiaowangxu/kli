@@ -231,10 +231,15 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
         this.notify_layout_change();
     }
 
+    public notify_style_change() {
+        this.update_text_spans();
+        this.get_scene()?.notify_change();
+    }
+
     protected push_text_spans(text: Text, base_style: Partial<TextStyle>, text_wrap: TextWrap | undefined, text_break: TextBreak | undefined, target: TextContainerSpan[]) {
         for (const child of text.children) {
             if (child instanceof Text) {
-                this.push_text_spans(child, merge_text_styles(base_style, child), text.text_wrap ?? text_wrap, text.text_break ?? text_break, target);
+                this.push_text_spans(child, merge_text_styles(base_style, child), child.text_wrap ?? text_wrap, child.text_break ?? text_break, target);
             }
             else if (child instanceof TextContent) {
                 if (child.content !== undefined) {
@@ -279,7 +284,13 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
         this.text_spans = [];
         for (const text of this.children) {
             if (text instanceof Text) {
-                this.push_text_spans(text, text, undefined, undefined, this.text_spans);
+                this.push_text_spans(text, {
+                    color: text.color,
+                    bg_color: text.bg_color,
+                    bold: text.bold,
+                    italic: text.italic,
+                    underline: text.underline,
+                }, text.text_wrap, text.text_break, this.text_spans);
             }
             else {
                 this.text_spans.push({

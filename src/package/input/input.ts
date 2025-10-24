@@ -1,4 +1,5 @@
 import { ReadStream } from "node:tty";
+import { log } from "../util/logger.js";
 
 export class Input {
 
@@ -26,6 +27,8 @@ export class Input {
         if (sequence === '\u0003') {
             process.exit(0);
         }
+        const visual = sequence.replaceAll('\x1b', '\\x1b');
+        log(visual);
     }
 
 }

@@ -9,11 +9,47 @@ export class Text extends NodeWithChildren<Text | TextContent | Newline> impleme
 
     public readonly children: (Text | TextContent | Newline)[] = [];
 
-    public color: Color | undefined;
-    public bg_color: Color | undefined;
-    public bold: boolean | undefined;
-    public italic: boolean | undefined;
-    public underline: boolean | undefined;
+    protected _color: Color | undefined;
+    protected _bg_color: Color | undefined;
+    protected _bold: boolean | undefined;
+    protected _italic: boolean | undefined;
+    protected _underline: boolean | undefined;
+
+    get color() {
+        return this._color;
+    }
+    set color(v: Color | undefined) {
+        this._color = v;
+        this.get_text_container()?.notify_style_change();
+    }
+    get bg_color() {
+        return this._bg_color;
+    }
+    set bg_color(v: Color | undefined) {
+        this._bg_color = v;
+        this.get_text_container()?.notify_style_change();
+    }
+    get bold() {
+        return this._bold;
+    }
+    set bold(v: boolean | undefined) {
+        this._bold = v;
+        this.get_text_container()?.notify_style_change();
+    }
+    get italic() {
+        return this._italic;
+    }
+    set italic(v: boolean | undefined) {
+        this._italic = v;
+        this.get_text_container()?.notify_style_change();
+    }
+    get underline() {
+        return this._underline;
+    }
+    set underline(v: boolean | undefined) {
+        this._underline = v;
+        this.get_text_container()?.notify_style_change();
+    }
 
     protected _text_wrap: TextWrap | undefined;
     protected _text_break: TextBreak | undefined;

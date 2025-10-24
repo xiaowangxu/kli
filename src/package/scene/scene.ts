@@ -1,3 +1,4 @@
+import { PositionType } from "yoga-layout";
 import { LayoutContainer, LayoutLeaf, LayoutNode } from "../layout/layout.js";
 import { Node } from "../node/node.js";
 import { Renderer } from "../render/renderer.js";
@@ -11,6 +12,11 @@ export class Scene extends LayoutContainer {
     public readonly on_changed: Signal<() => void> = new Signal();
 
     protected readonly screen_size: Position = Position.of(0, 0);
+
+    constructor() {
+        super();
+        this.layout_node.setPositionType(PositionType.Relative);
+    }
 
     protected on_child_addeded(node: Node & (LayoutLeaf | LayoutNode)): void {
         super.on_child_addeded(node);
@@ -40,6 +46,7 @@ export class Scene extends LayoutContainer {
     }
 
     public draw(render: Renderer): void {
+
         for (const child of this.children) {
             child.draw(render, true);
         }

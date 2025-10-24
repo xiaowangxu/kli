@@ -14,12 +14,12 @@ export interface TextStyle {
     underline: boolean | undefined;
 }
 
-export function merge_text_styles(a: Partial<TextStyle>, b: Partial<TextStyle>): Partial<TextStyle> {
+export function merge_text_styles(b: Partial<TextStyle>, a: Partial<TextStyle>): Partial<TextStyle> {
     return {
         color: a.color ?? b.color,
         bg_color: a.bg_color ?? b.bg_color,
         bold: a.bold ?? b.bold,
         italic: a.italic ?? b.italic,
-        underline: a.underline ?? b.underline
+        underline: a.underline ?? b.underline,
     };
 }

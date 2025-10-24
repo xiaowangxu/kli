@@ -391,6 +391,7 @@ export class Renderer {
         this.stream.write('\x1b[?1049h\x1b[?25l\x1b[?1006h');
         this.stream.on('resize', this.on_changed_listener);
     }
+
     dispose() {
         this.stream.write('\x1b[?1006l\x1b[?1049l\x1b[?25h');
         this.stream.off('resize', this.on_changed_listener);
@@ -498,18 +499,17 @@ export class Renderer {
 
         const render_rect = target.intersect(Rect.of(0, 0, this.width, this.height));
 
-        if (render_rect === undefined) {
-            // clear
-            if (clear_screen) {
-                const width = this.width;
-                const clear_str = ' '.repeat(width);
-                let str = '';
-                for (let i = 0; i < this.height; i++) {
-                    str += ANSI.move_to(0, i);
-                    str += `${ANSI.reset}${clear_screen_color ? ANSI.bg_rgb(clear_screen_color) : ''}${clear_str}${ANSI.reset}`;
-                }
-                this.rendered_content += str;
+        // clear top
+        const clear_full_width_str = `${clear_screen_color ? ANSI.bg_rgb(clear_screen_color) : ANSI.none}${' '.repeat(this.width)}`;
+        if (clear_screen) {
+            this.rendered_content += ANSI.reset;
+            for (let i = 0; i < (render_rect?.y ?? this.height); i++) {
+                this.rendered_content += ANSI.move_to(0, i);
+                this.rendered_content += clear_full_width_str;
             }
+        }
+
+        if (render_rect === undefined) {
             return;
         }
 
@@ -530,45 +530,78 @@ export class Renderer {
         const more_width = ' '.repeat(render_rect.width - content_rect.width);
         const more_height = ' '.repeat(render_rect.width);
 
-        let str = ANSI.move_to(render_rect.x, render_rect.y);
+        this.rendered_content += ANSI.move_to(render_rect.x, render_rect.y);
         let skip_span = 1;
         const clear_empty_str = clear_empty_color ? `${ANSI.reset}${ANSI.bg_rgb(clear_empty_color)}` : '';
+        const clear_left_str = render_rect.x <= 0 ? undefined : `${clear_screen_color ? ANSI.bg_rgb(clear_screen_color) : ANSI.none}${' '.repeat(render_rect.x)}`;
+        const clear_right_str = (this.width - render_rect.x - render_rect.width) <= 0 ? undefined : `${clear_screen_color ? ANSI.bg_rgb(clear_screen_color) : ANSI.none}${' '.repeat(this.width - render_rect.x - render_rect.width)}`;
         for (const { x, y, pixel, newline, endline } of this.buffer.iterate(content_rect.x, content_rect.y, content_rect.width, content_rect.height)) {
             if (newline) {
-                str += ANSI.move_to(
-                    render_rect.x + x + render_offset_x - content_rect.x,
-                    render_rect.y + y + render_offset_y - content_rect.y,
-                );
-                // console.log(y, render_rect.y + y + render_offset_y - content_rect.y);
+                if (clear_screen) {
+                    this.rendered_content += ANSI.move_to(
+                        0,
+                        render_rect.y + y + render_offset_y - content_rect.y,
+                    );
+                    if (clear_left_str !== undefined) {
+                        this.rendered_content += clear_left_str;
+                    }
+                }
+                else {
+                    this.rendered_content += ANSI.move_to(
+                        render_rect.x + x + render_offset_x - content_rect.x,
+                        render_rect.y + y + render_offset_y - content_rect.y,
+                    );
+                }
             }
             if (pixel === undefined) {
-                str += `${clear_empty_str} `;
+                this.rendered_content += `${clear_empty_str} `;
                 skip_span = 0;
             }
             else {
-                const styled_char = pixel.get_styled_text_content();
                 const span = pixel.get_span();
+                const styled_char = endline && span > 1 ? pixel.get_styled_text_content(' ') : pixel.get_styled_text_content();
                 if (skip_span > 1) {
                     skip_span--;
                 }
                 else {
-                    str += styled_char;
+                    this.rendered_content += styled_char;
                     skip_span = span;
                 }
             }
             if (endline) {
-                if (has_more_x) str += `${clear_empty_str}${more_width}`;
-                str += ANSI.reset;
+                if (has_more_x) this.rendered_content += `${clear_empty_str}${more_width}`;
+                this.rendered_content += ANSI.reset;
                 skip_span = 1;
+                if (clear_right_str !== undefined) {
+                    this.rendered_content += clear_right_str;
+                }
             }
         }
         if (has_more_y) {
             for (let i = more_top; i < more_bottom; i++) {
-                str += `${ANSI.move_to(render_rect.x, i)}${ANSI.reset}${clear_empty_str}${more_height}${ANSI.reset}`;
+                if (clear_screen) {
+                    this.rendered_content += ANSI.move_to(0, i);
+                    if (clear_left_str !== undefined) {
+                        this.rendered_content += clear_left_str;
+                    }
+                    this.rendered_content += `${clear_empty_str}${more_height}${ANSI.reset}`;
+                    if (clear_right_str !== undefined) {
+                        this.rendered_content += clear_right_str;
+                    }
+                }
+                else {
+                    this.rendered_content += `${ANSI.move_to(render_rect.x, i)}${clear_empty_str}${more_height}${ANSI.reset}`;
+                }
             }
         }
 
-        this.rendered_content += str;
+        if (clear_screen) {
+            this.rendered_content += ANSI.reset;
+            for (let i = more_bottom; i < this.height; i++) {
+                this.rendered_content += ANSI.move_to(0, i);
+                this.rendered_content += clear_full_width_str;
+            }
+        }
     }
 
     protected async end_render() {

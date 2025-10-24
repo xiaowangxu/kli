@@ -1,4 +1,5 @@
 import { Color } from "../util/color.js";
+import { log } from "../util/logger.js";
 import { Rect } from "../util/rect.js";
 import { ANSI } from "./renderer.js";
 
@@ -58,8 +59,8 @@ export class BufferPixel {
         return this.span;
     }
 
-    public get_styled_text_content() {
-        return `${ANSI.reset}${this.color ? ANSI.rgb(this.color) : ANSI.none}${this.bg_color ? ANSI.bg_rgb(this.bg_color) : ANSI.none}${this.bold ? ANSI.bold : ANSI.none}${this.italic ? ANSI.italic : ANSI.none}${this.underline ? ANSI.underline : ANSI.none}${this.get_unstyled_text_content()}${ANSI.reset}`;
+    public get_styled_text_content(override_char?: string) {
+        return `${ANSI.reset}${this.color ? ANSI.rgb(this.color) : ANSI.none}${this.bg_color ? ANSI.bg_rgb(this.bg_color) : ANSI.none}${this.bold ? ANSI.bold : ANSI.none}${this.italic ? ANSI.italic : ANSI.none}${this.underline ? ANSI.underline : ANSI.none}${override_char ?? this.get_unstyled_text_content()}${ANSI.reset}`;
     }
 
     public get_unstyled_text_content() {
