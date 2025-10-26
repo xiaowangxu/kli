@@ -12,6 +12,7 @@ import { Position } from "../util/position.js";
 import { BoxStyle } from "../style/box_style.js";
 import { execute_shader, Shader } from "../style/shader.js";
 import { merge_text_styles, TextLayoutStyle, TextStyle } from "../style/text_style.js";
+import { log } from "../util/logger.js";
 
 export class Container extends LayoutContainer<Container | TextContainer> implements BorderStyle, BoxStyle {
 
@@ -49,8 +50,6 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
         this._bg_shader = v;
         this.get_scene()?.notify_change();
     }
-
-    public readonly children: (Container | TextContainer)[] = [];
 
     public get_scene(): Scene | undefined {
         return this.parent?.get_scene();
@@ -280,7 +279,10 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
         }
     }
 
+    protected not_wrapped: boolean = true;
+
     protected update_text_spans() {
+        this.not_wrapped = true;
         this.text_spans = [];
         for (const text of this.children) {
             if (text instanceof Text) {
@@ -304,11 +306,10 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
     }
 
     public wrap_text_spans(max_width: number, max_height: number = Infinity, non_fit_char: string = '*') {
-        if (max_width <= 0 || max_height <= 0) {
-            return {
-                width: 0,
-                height: 0,
-            };
+        this.not_wrapped = false;
+
+        for (const span of this.text_spans) {
+            span.override = undefined;
         }
 
         const text_spans_count = this.text_spans.length;
@@ -338,7 +339,7 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
             },
             // [TextBreak.KeepAll]
             (content, width, will_overflow) => {
-                return will_overflow ? CollectInlineSpansResult.NotAppendBreak : CollectInlineSpansResult.AppendNotBreak;
+                return will_overflow ? CollectInlineSpansResult.NotAppendNotBreak : CollectInlineSpansResult.AppendNotBreak;
             },
             // [TextBreak.Word]
             (content, width, will_overflow) => {
@@ -447,12 +448,15 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
                 // deal with line remain
                 const inline_remain = current_index_offset - current_max_inline_x
                 let force_text_wrap: TextWrap | undefined;
-                if (inline_remain > 0 && !current_has_content) {
+                if (inline_remain > 0 && (last_text_break === TextBreak.KeepAll || !current_has_content)) {
                     soft_newline = false;
                     for (let i = 0; i < inline_remain; i++) {
                         const span = this.text_spans[index++];
                         span.x = current_inline_x;
                         span.y = result_height - 1;
+                        if (i === inline_remain - 1) {
+                            span.override = '…';
+                        }
                         current_inline_x += span.width;
                     }
                     result_width = Math.max(result_width, current_inline_x);
@@ -520,7 +524,7 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
     public draw(render: Renderer): void {
         const content_rect = this.get_content_rect();
         if (this.mask) render.push_mask(content_rect);
-        if (this.last_content_width !== content_rect.width || this.last_content_height !== content_rect.height) {
+        if (this.not_wrapped || this.last_content_width !== content_rect.width || this.last_content_height !== content_rect.height) {
             this.last_content_width = content_rect.width;
             this.last_content_height = content_rect.height;
             this.wrap_text_spans(this.last_content_width, Infinity);

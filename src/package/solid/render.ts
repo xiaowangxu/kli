@@ -8,6 +8,7 @@ import { Input } from '../input/input.js';
 import { Renderer } from '../render/renderer.js';
 import { Rect } from '../util/rect.js';
 import { JSXElement } from 'solid-js';
+import { log } from '../util/logger.js';
 
 export type KliNode = Node | NodeWithChildren<Node | (Node & (LayoutLeaf | LayoutNode))>;
 
@@ -48,7 +49,18 @@ const {
             return node instanceof TextContent;
         },
         setProperty: function <T>(node: KliNode, name: string, value: T, prev?: T | undefined): void {
-            if (name in node) {
+            if (name.startsWith('on_')) {
+                if (prev !== undefined) {
+                    const off = `off${name.slice(2)}`;
+                    if (off in node) {
+                        (node as any)[off](prev);
+                    }
+                }
+                if (name in node) {
+                    (node as any)[name](value);
+                }
+            }
+            else if (name in node) {
                 (node as any)[name] = value;
             }
         },
@@ -103,6 +115,7 @@ function render(code: () => JSXElement) {
         input.dispose();
     });
     default_render(code, scene);
+    return { scene, renderer, input };
 }
 
 export {

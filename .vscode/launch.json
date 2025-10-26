@@ -7,7 +7,7 @@
             "name": "Run dev.ts",
             "runtimeExecutable": "tsx",
             "args": [
-                "src/dev.ts"
+                "src/dev.tsx"
             ],
             "skipFiles": [
                 "<node_internals>/**"

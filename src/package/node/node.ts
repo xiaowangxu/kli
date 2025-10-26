@@ -1,22 +1,87 @@
 import { Renderer } from "../render/renderer.js";
 import { Scene } from "../scene/scene.js";
+import { Signal } from "../util/signal.js";
 
-export interface Node {
+export abstract class Node {
+
     parent: NodeWithChild<Node> | undefined;
-    draw(render: Renderer, force?: boolean): void;
-    dispose(recusive: boolean): void;
-    get_scene(): Scene | undefined;
+    protected _focusable: boolean = false;
+
+    protected readonly on_focused_event: Signal<() => void> = new Signal();
+    protected readonly on_blured_event: Signal<() => void> = new Signal();
+
+    public get focusable() {
+        return this._focusable;
+    }
+    public set focusable(v: boolean) {
+        if (this._focusable !== v) {
+            this._focusable = v;
+            if (!this._focusable) {
+                this.get_scene()?.blur_node(this);
+            }
+        }
+    }
+
+    abstract draw(render: Renderer, force?: boolean): void;
+
+    abstract dispose(recusive: boolean): void;
+
+    get_scene(): Scene | undefined {
+        return this.parent?.get_scene();
+    }
+
+    public get_children(): Node[] | undefined {
+        return undefined;
+    }
+
+    abstract traverse_on_enter_scene(scene: Scene): void;
+    abstract traverse_on_exit_scene(scene: Scene): void;
+    on_enter_scene(scene: Scene): void { }
+    on_exit_scene(scene: Scene): void {
+        scene.blur_node(this);
+    }
+
+    public focus(): void {
+        this.get_scene()?.focus_node?.(this);
+    }
+    public blur(): void { 
+        this.get_scene()?.blur_node?.(this);
+    }
+
+    public on_focused(fn: () => void) {
+        this.on_focused_event.connect(fn);
+    }
+    public off_focused(fn: () => void) {
+        this.on_focused_event.disconnect(fn);
+    }
+    public on_blured(fn: () => void) {
+        this.on_blured_event.connect(fn);
+    }
+    public off_blured(fn: () => void) {
+        this.on_blured_event.disconnect(fn);
+    }
+
+    trigger_focused(): void {
+        this.on_focused_event.trigger();
+    }
+    trigger_blured(): void {
+        this.on_blured_event.trigger();
+    }
+
 }
 
 export interface NodeWithChild<Child extends Node> extends Node {
-    remove_child(node: Child): Child | undefined;
+    remove_child(node: Child, will_exit_scene?: boolean): Child | undefined;
     get_next_sibling(node: Child): Child | undefined;
 }
 
-export abstract class NodeWithChildren<Children extends Node = Node> implements NodeWithChild<Children> {
+export abstract class NodeWithChildren<Children extends Node = Node> extends Node implements NodeWithChild<Children> {
 
-    public parent: NodeWithChild<Node> | undefined;
-    abstract readonly children: Children[];
+    public readonly children: Children[] = [];
+
+    get_children(): Children[] {
+        return this.children;
+    }
 
     public get_child_index(node: Children) {
         return this.children.indexOf(node);
@@ -35,10 +100,17 @@ export abstract class NodeWithChildren<Children extends Node = Node> implements 
     public add_child(node: Children): void {
         if (node as any === this) return;
         if (node.parent === this) return;
-        if (node.parent !== undefined) node.parent.remove_child(node);
+        const will_enter_scene = node.parent === undefined;
+        if (node.parent !== undefined) node.parent.remove_child(node, false);
         node.parent = this;
         this.children.push(node);
         this.on_child_addeded(node);
+        if (will_enter_scene) {
+            const scene = this.get_scene();
+            if (scene !== undefined) {
+                this.traverse_on_enter_scene(scene);
+            }
+        }
     }
 
     protected abstract on_child_addeded(node: Children): void;
@@ -47,13 +119,19 @@ export abstract class NodeWithChildren<Children extends Node = Node> implements 
         return this.children.length;
     }
 
-    public remove_child(node: Children): Children | undefined {
+    public remove_child(node: Children, will_exit_scene: boolean = true): Children | undefined {
         if (node.parent !== undefined) return undefined;
         const index = this.children.indexOf(node);
         if (index < 0) return undefined;
         node.parent = undefined;
         this.children.splice(index, 1);
         this.on_child_removed(node);
+        if (will_exit_scene) {
+            const scene = this.get_scene();
+            if (scene !== undefined) {
+                node.traverse_on_enter_scene(scene);
+            }
+        }
         return node;
     }
 
@@ -86,6 +164,20 @@ export abstract class NodeWithChildren<Children extends Node = Node> implements 
 
     public get_scene(): Scene | undefined {
         return this.parent?.get_scene();
+    }
+
+    traverse_on_enter_scene(scene: Scene): void {
+        this.on_enter_scene(scene);
+        for (const child of this.children) {
+            child.traverse_on_enter_scene(scene);
+        }
+    }
+
+    traverse_on_exit_scene(scene: Scene): void {
+        for (const child of this.children) {
+            child.traverse_on_exit_scene(scene);
+        }
+        this.on_exit_scene(scene);
     }
 
     public abstract draw(render: Renderer): void;

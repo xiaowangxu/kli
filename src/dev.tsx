@@ -5,6 +5,8 @@ import { createSignal, Index, onCleanup } from 'solid-js';
 import { Align, FlexDirection, Justify, Overflow, PositionType } from "yoga-layout";
 import { useDeltaFrame } from "./package/solid/hook/use_delta_frame.js";
 import { Shader } from "./package/style/shader.js";
+import { TextBreak, TextWrap } from "./package/node/container.js";
+import { log } from "./package/util/logger.js";
 
 function hsv2rgb(h: number, s: number, v: number) {
 	const k = (n: number) => (n + h * 6) % 6;
@@ -44,11 +46,12 @@ function Frame() {
 
 function Box(props: { name: string }) {
 	const [count, setCount] = createSignal(0);
+	const [focused, setFocused] = createSignal(false);
 	const timer = setInterval(() => {
 		setCount(count() + 1);
 	}, 500);
 	onCleanup(() => clearInterval(timer));
-	return <box flex_grow={0} flex_shrink={0} height={5} padding_horizontal={2} padding_vertical={1} border={1} border_type={BorderStyleType.Round} border_color={Color.of(100, 100, 100)} overflow={Overflow.Hidden}>
+	return <box focusable on_focused={() => setFocused(true)} on_blured={() => setFocused(false)} flex_grow={0} flex_shrink={0} height={5} padding_horizontal={2} padding_vertical={1} border={1} border_type={BorderStyleType.Round} border_color={focused() ? Color.of(200, 200, 200) : Color.of(100, 100, 100)} overflow={Overflow.Hidden}>
 		<text-box>
 			<text>{props.name} : {count()}</text>
 		</text-box>
@@ -56,16 +59,20 @@ function Box(props: { name: string }) {
 }
 
 function App() {
+	const [focused, setFocused] = createSignal(false);
 	return (
 		<box position={PositionType.Absolute} top={0} left={0} right={0} bottom={0} flex_direction={FlexDirection.Row} gap={1} align_items={Align.Stretch}>
-			<box flex_direction={FlexDirection.Column} padding_horizontal={2} padding_vertical={1} flex_grow={1} flex_shrink={1} overflow={Overflow.Scroll} border={1} border_type={BorderStyleType.Round} border_color={Color.of(100, 100, 100)}>
+			<box focusable on_focused={() => setFocused(true)} on_blured={() => setFocused(false)} flex_direction={FlexDirection.Column} padding_horizontal={2} padding_vertical={1} flex_grow={1} flex_shrink={1} overflow={Overflow.Scroll} border={1} border_type={BorderStyleType.Round} border_color={focused() ? Color.of(200, 200, 200) : Color.of(100, 100, 100)}>
 				<text-box>
 					<text color={Color.of(255, 190, 0)} underline>Hello from <text bold>Kli</text></text>
 					<br />
 					<br />
-					<text>Hello World 这个可以换行 😘</text>
+					<text text_break={TextBreak.KeepAll} text_wrap={TextWrap.NoWrap}>
+						<text text_break={TextBreak.Word} text_wrap={TextWrap.Wrap}>Hello World 这个可以换行 😘 </text>
+						charactercharactercharactercharactercharactercharactercharacter
+					</text>
 					<br />
-					<text  color={Color.of(255, 190, 0)}>这是个非常好的问题，实际上是 <text bold italic>终端字符宽度（character width / display width）</text> 的问题。</text>
+					<text color={Color.of(255, 190, 0)}>这是个非常好的问题，实际上是 <text bold italic>终端字符宽度（character width / display width）</text> 的问题。</text>
 					<br />
 					<text>{`你看到中文引号 \`“ ”\` 在控制台中宽度为 **1**，是因为 **Unicode East Asian Width 属性** 的定义和终端渲染策略不一致造成的。下面我来详细解释：
 
@@ -177,4 +184,9 @@ for ch in "“”":
 	);
 }
 
-render(App);
+const { scene } = render(App);
+
+setInterval(() => {
+	const node = scene.get_prev_focusable();
+	if (node) node.focus();
+}, 1000);

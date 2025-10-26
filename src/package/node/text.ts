@@ -2,12 +2,11 @@ import { Renderer } from "../render/renderer.js";
 import { Scene } from "../scene/scene.js";
 import { TextLayoutStyle, TextStyle } from "../style/text_style.js";
 import { Color } from "../util/color.js";
+import { log } from "../util/logger.js";
 import { TextBreak, TextContainer, TextWrap } from "./container.js";
 import { Node, NodeWithChild, NodeWithChildren } from "./node.js";
 
 export class Text extends NodeWithChildren<Text | TextContent | Newline> implements TextStyle, TextLayoutStyle {
-
-    public readonly children: (Text | TextContent | Newline)[] = [];
 
     protected _color: Color | undefined;
     protected _bg_color: Color | undefined;
@@ -106,9 +105,8 @@ export class Text extends NodeWithChildren<Text | TextContent | Newline> impleme
 
 }
 
-export class TextContent implements Node {
+export class TextContent extends Node {
 
-    public parent: NodeWithChild<Node> | undefined;
     protected _content: string | undefined;
 
     get content() {
@@ -132,14 +130,21 @@ export class TextContent implements Node {
         throw new Error("Method not implemented.");
     }
 
+    traverse_on_enter_scene(scene: Scene): void {
+        this.on_enter_scene(scene);
+    }
+
+    traverse_on_exit_scene(scene: Scene): void {
+        this.traverse_on_exit_scene(scene);
+    }
+
     public dispose(recusive: boolean): void {
 
     }
 
 }
 
-export class Newline implements Node {
-    public parent: NodeWithChild<Node> | undefined;
+export class Newline extends Node {
 
     draw(render: Renderer): void {
         throw new Error("Method not implemented.");
@@ -149,7 +154,14 @@ export class Newline implements Node {
         return this.parent?.get_scene();
     }
 
-    dispose(recusive: boolean): void {
-
+    traverse_on_enter_scene(scene: Scene): void {
+        this.on_enter_scene(scene);
     }
+
+    traverse_on_exit_scene(scene: Scene): void {
+        this.traverse_on_exit_scene(scene);
+    }
+
+    dispose(recusive: boolean): void { }
+
 }
