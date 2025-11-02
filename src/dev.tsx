@@ -14,6 +14,32 @@ function hsv2rgb(h: number, s: number, v: number) {
 	return { r: f(5), g: f(3), b: f(1) };
 }
 
+function Title(props: { version: string }) {
+	const { version = "0.0.1" } = props;
+	const [focused, setFocused] = createSignal(false);
+	const version_len = version.length;
+	return (
+		<box flex_shrink={1} flex_grow={0} flex_basis={8} min_height={8} margin_left={'auto'} flex_direction={FlexDirection.Column} align_items={Align.FlexEnd}
+		focusable on_focused={() => setFocused(true)} on_blured={() => setFocused(false)} border={1} border_type={BorderStyleType.Round} border_color={focused() ? Color.of(255, 180, 80) : Color.of(130, 100, 40)}>
+			<text-box>
+				<text text_wrap={TextWrap.NoWrap} text_break={TextBreak.KeepAll} color={Color.of(255, 50, 94)}>{'░'.repeat(version_len)}{'░░░░░░░░  ░░░░  ░░  ░░░░  ░░  ░░░░  ░░  ░░░░  ░░░░░'}</text>
+				<br/>
+				<text text_wrap={TextWrap.NoWrap} text_break={TextBreak.KeepAll} color={Color.of(255, 94, 50)}>{'▒'.repeat(version_len)}{'▒▒▒▒▒▒▒▒   ▒▒   ▒▒  ▒▒▒▒  ▒▒  ▒▒▒▒  ▒▒   ▒▒   ▒▒▒▒▒'}</text>
+				<br/>
+				<text text_wrap={TextWrap.NoWrap} text_break={TextBreak.KeepAll} color={Color.of(255, 135, 50)}>{'▓'.repeat(version_len)}{'▓▓▓▓▓▓▓▓        ▓▓  ▓▓▓▓  ▓▓▓  ▓▓  ▓▓▓        ▓▓▓▓▓'}</text>
+				<br/>
+				<text text_wrap={TextWrap.NoWrap} text_break={TextBreak.KeepAll} color={Color.of(255, 199, 32)}>{'█'.repeat(version_len)}{'████████  █  █  ██  ████  ████    ████  █  █  █████'}</text>
+				<br/>
+				<text text_wrap={TextWrap.NoWrap} text_break={TextBreak.KeepAll} color={Color.of(255, 236, 29)}>{'█'.repeat(version_len)}{'████████  ████  ███      ██████  █████  ████  █████'}</text>
+				<br/>
+				<text text_wrap={TextWrap.NoWrap} text_break={TextBreak.KeepAll} bg_color={Color.of(255, 255, 255)}>
+					<text color={Color.of(120, 120, 120)}> Multi-source Unified Virtualization & Monitoring</text> <text color={Color.of(0, 0, 0)}>{version} </text>
+				</text>
+			</text-box>
+		</box>
+	);
+};
+
 function Frame() {
 	const { delta, duration } = useDeltaFrame(30, true);
 	const shader: Shader = (u, v, w, h) => {
@@ -61,20 +87,22 @@ function Box(props: { name: string }) {
 function App() {
 	const [focused, setFocused] = createSignal(false);
 	return (
-		<box position={PositionType.Absolute} top={0} left={0} right={0} bottom={0} flex_direction={FlexDirection.Row} gap={1} align_items={Align.Stretch}>
-			<box focusable on_focused={() => setFocused(true)} on_blured={() => setFocused(false)} flex_direction={FlexDirection.Column} padding_horizontal={2} padding_vertical={1} flex_grow={1} flex_shrink={1} overflow={Overflow.Scroll} border={1} border_type={BorderStyleType.Round} border_color={focused() ? Color.of(200, 200, 200) : Color.of(100, 100, 100)}>
-				<text-box>
-					<text color={Color.of(255, 190, 0)} underline>Hello from <text bold>Kli</text></text>
-					<br />
-					<br />
-					<text text_break={TextBreak.KeepAll} text_wrap={TextWrap.NoWrap}>
-						<text text_break={TextBreak.Word} text_wrap={TextWrap.Wrap}>Hello World 这个可以换行 😘 </text>
-						charactercharactercharactercharactercharactercharactercharacter
-					</text>
-					<br />
-					<text color={Color.of(255, 190, 0)}>这是个非常好的问题，实际上是 <text bold italic>终端字符宽度（character width / display width）</text> 的问题。</text>
-					<br />
-					<text>{`你看到中文引号 \`“ ”\` 在控制台中宽度为 **1**，是因为 **Unicode East Asian Width 属性** 的定义和终端渲染策略不一致造成的。下面我来详细解释：
+		<box position={PositionType.Absolute} top={0} left={0} right={0} bottom={0} flex_direction={FlexDirection.Column}>
+			<Title version="0.0.1 alpha"/>
+			<box flex_grow={1} flex_shrink={1} flex_direction={FlexDirection.Row} gap={1} align_items={Align.Stretch}>
+				<box focusable on_focused={() => setFocused(true)} on_blured={() => setFocused(false)} flex_direction={FlexDirection.Column} padding_horizontal={2} padding_vertical={1} flex_grow={1} flex_shrink={1} overflow={Overflow.Scroll} border={1} border_type={BorderStyleType.Round} border_color={focused() ? Color.of(200, 200, 200) : Color.of(100, 100, 100)}>
+					<text-box>
+						<text color={Color.of(255, 190, 0)} underline>Hello      from <text bold>Kli</text></text>
+						<br />
+						<br />
+						<text text_break={TextBreak.KeepAll} text_wrap={TextWrap.NoWrap}>
+							<text text_break={TextBreak.Word} text_wrap={TextWrap.Wrap}>Hello World 这个可以换行 😘 </text>
+							charactercharactercharactercharactercharactercharactercharacter
+						</text>
+						<br />
+						<text color={Color.of(255, 190, 0)}>这是个非常好的问题，实际上是 <text bold italic>终端字符宽度（character width / display width）</text> 的问题。</text>
+						<br />
+						<text>{`你看到中文引号 \`“ ”\` 在控制台中宽度为 **1**，是因为 **Unicode East Asian Width 属性** 的定义和终端渲染策略不一致造成的。下面我来详细解释：
 
 ---
 
@@ -165,15 +193,16 @@ for ch in "“”":
 ---
 
 如果你愿意，我可以帮你写一个 **TypeScript 函数**，在 CLI 布局中正确计算中英文混合字符串的显示宽度（考虑全角、半角和 Ambiguous 的差异）。是否要我帮你写？` }</text>
-				</text-box>
-			</box>
-			<box flex_grow={0} flex_shrink={0} width={24} padding_horizontal={0} overflow={Overflow.Hidden} border={0} border_type={undefined /*BorderStyleType.Round*/} border_color={Color.of(255, 0, 0)}>
-				<Index each={['hello', 'test', '你好世界']}>
-					{(cat, i) => (
-						<Box name={cat()} />
-					)}
-				</Index>
-				<Frame />
+					</text-box>
+				</box>
+				<box flex_grow={0} flex_shrink={0} width={24} padding_horizontal={0} overflow={Overflow.Hidden} border={0} border_type={undefined /*BorderStyleType.Round*/} border_color={Color.of(255, 0, 0)}>
+					<Index each={['hello', 'test', '你好世界']}>
+						{(cat, i) => (
+							<Box name={cat()} />
+						)}
+					</Index>
+					<Frame />
+				</box>
 			</box>
 			<box position={PositionType.Absolute} bottom={0} right={0} border={1} padding_horizontal={1} border_type={BorderStyleType.Round} border_color={Color.of(255, 124, 255)}>
 				<text-box>
