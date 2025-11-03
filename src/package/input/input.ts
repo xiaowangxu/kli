@@ -1,9 +1,12 @@
 import { ReadStream } from "node:tty";
 import { log } from "../util/logger.js";
+import { Signal } from "../util/signal.js";
+import { InputEvent } from "./event.js";
 
 export class Input {
 
     public readonly stream: ReadStream;
+    public readonly on_input = new Signal<(event: InputEvent) => void>();
 
     constructor(stream: ReadStream) {
         this.stream = stream;
@@ -14,11 +17,12 @@ export class Input {
         this.stream.setRawMode(true);
         this.stream.resume();
         this.stream.setEncoding('utf8');
-
     }
+
     dispose() {
         this.stream.setRawMode(false);
         this.stream.off('data', this._handle_input);
+        this.on_input.clear();
     }
 
     private _handle_input = (data: Buffer<ArrayBufferLike>) => this.handle_input(data);

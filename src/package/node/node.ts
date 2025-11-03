@@ -1,3 +1,4 @@
+import { InputEvent } from "../input/event.js";
 import { Renderer } from "../render/renderer.js";
 import { Scene } from "../scene/scene.js";
 import { Signal } from "../util/signal.js";
@@ -67,6 +68,8 @@ export abstract class Node {
     trigger_blured(): void {
         this.on_blured_event.trigger();
     }
+
+    public on_input_event(event: InputEvent): void {}
 
 }
 

@@ -5,15 +5,22 @@ import { Renderer } from "../render/renderer.js";
 import { Position } from "../util/position.js";
 import { Signal } from "../util/signal.js";
 import { log } from "../util/logger.js";
+import { InputEvent } from "../input/event.js";
+import { Input } from "../input/input.js";
 
 export class Scene extends LayoutContainer {
 
+    public readonly input: Input;
     public readonly on_changed: Signal<() => void> = new Signal();
 
     protected readonly screen_size: Position = Position.of(0, 0);
 
-    constructor() {
+    private readonly on_trigger_input_event = (data: InputEvent) => this.trigger_input_event(data);
+    
+    constructor(input: Input) {
         super();
+        this.input = input;
+        this.input.on_input.connect(this.on_trigger_input_event);
         this.layout_node.setPositionType(PositionType.Relative);
     }
 
@@ -52,6 +59,37 @@ export class Scene extends LayoutContainer {
 
     public notify_change() {
         this.on_changed.trigger();
+    }
+
+    public trigger_input_event(event: InputEvent) {
+        if (event.is_propagation_stopped()) return;
+        for (const child of this.get_children()) {
+            this.propagate_input_event_down(child, event);
+            if (event.is_propagation_stopped()) return;
+        }
+    }
+
+    private propagate_input_event_down(node: Node, event: InputEvent) {
+        if (event.is_propagation_stopped()) return;
+        node.on_input_event(event);
+        const children = node.get_children();
+        if (children === undefined) return;
+        for (const child of children) {
+            this.propagate_input_event_down(child, event);
+            if (event.is_propagation_stopped()) return;
+        }
+    }
+
+    private propagate_input_event_up(node: Node, event: InputEvent) {
+        if (event.is_propagation_stopped()) return;
+        node.on_input_event(event);
+        let parent = node.parent;
+        while (parent !== undefined) {
+            if (parent instanceof Scene) break;
+            parent.on_input_event(event);
+            if (event.is_propagation_stopped()) return;
+            parent = parent.parent;
+        }
     }
 
     protected focused_node: Node | undefined = undefined;
@@ -105,6 +143,7 @@ export class Scene extends LayoutContainer {
 
     public dispose(recusive: boolean) {
         this.focused_node = undefined;
+        this.input.on_input.disconnect(this.on_trigger_input_event);
         super.dispose(recusive);
     }
 

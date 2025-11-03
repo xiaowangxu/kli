@@ -101,13 +101,13 @@ const {
     });
 
 function render(code: () => JSXElement) {
-    const scene = new Scene();
+    const input = new Input(process.stdin);
+    const scene = new Scene(input);
     const renderer = new Renderer(process.stdout, (render) => {
         render.draw_scene();
         render.execute_render(Rect.of(0, 0, render.width, render.height), Rect.of(0, 0, render.width, render.height), false, false);
     });
     renderer.set_scene(scene);
-    const input = new Input(process.stdin);
     renderer.init();
     input.init();
     process.on('exit', () => {
