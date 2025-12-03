@@ -19,8 +19,8 @@ function Title(props: { version: string }) {
 	const [focused, setFocused] = createSignal(false);
 	const version_len = version.length;
 	return (
-		<box flex_shrink={1} flex_grow={0} flex_basis={8} min_height={8} margin_left={'auto'} flex_direction={FlexDirection.Column} align_items={Align.FlexEnd}
-		focusable on_focused={() => setFocused(true)} on_blured={() => setFocused(false)} border={1} border_type={BorderStyleType.Round} border_color={focused() ? Color.of(255, 180, 80) : Color.of(130, 100, 40)}>
+		<box flex_shrink={1} flex_grow={0} flex_basis={6} min_height={6} margin_left={'auto'} flex_direction={FlexDirection.Column} align_items={Align.FlexEnd}
+		focusable on_focused={() => setFocused(true)} on_blured={() => setFocused(false)}>
 			<text-box>
 				<text text_wrap={TextWrap.NoWrap} text_break={TextBreak.KeepAll} color={Color.of(255, 50, 94)}>{'░'.repeat(version_len)}{'░░░░░░░░  ░░░░  ░░  ░░░░  ░░  ░░░░  ░░  ░░░░  ░░░░░'}</text>
 				<br/>
@@ -214,8 +214,3 @@ for ch in "“”":
 }
 
 const { scene } = render(App);
-
-setInterval(() => {
-	const node = scene.get_prev_focusable();
-	if (node) node.focus();
-}, 1000);

@@ -365,6 +365,10 @@ export class Renderer {
             setImmediate(() => {
                 this.begin_render(this.width, this.height);
                 this.render_callback(this);
+                if (this.scene !== undefined) {
+                    const { x, y } = this.scene.get_focus_position() ?? { x: 2, y: 1 };
+                    this.rendered_content += ANSI.move_to(x, y);
+                }
                 this.end_render();
             });
         }
@@ -399,10 +403,7 @@ export class Renderer {
 
     private rendered_content: string = '';
 
-    private begin_time: number = 0;
-
     protected begin_render(width: number, height: number): void {
-        this.begin_time = Date.now();
         this.is_rendering = true;
         this.render_queued = false;
         this.buffer.resize(width, height);
@@ -605,7 +606,6 @@ export class Renderer {
     }
 
     protected async end_render() {
-        // log("rendered in ", Date.now() - this.begin_time, "ms");
         await new Promise((resolve) => this.stream.write(this.rendered_content, resolve as any));
         this.is_rendering = false;
         if (this.render_queued) {

@@ -1,6 +1,7 @@
 import { InputEvent } from "../input/event.js";
 import { Renderer } from "../render/renderer.js";
 import { Scene } from "../scene/scene.js";
+import { Position } from "../util/position.js";
 import { Signal } from "../util/signal.js";
 
 export abstract class Node {
@@ -42,6 +43,9 @@ export abstract class Node {
         scene.blur_node(this);
     }
 
+    public get_focus_position(): Position | undefined {
+        return undefined;
+    }
     public focus(): void {
         this.get_scene()?.focus_node?.(this);
     }

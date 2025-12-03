@@ -135,7 +135,7 @@ export class TextContent extends Node {
     }
 
     traverse_on_exit_scene(scene: Scene): void {
-        this.traverse_on_exit_scene(scene);
+        this.on_exit_scene(scene);
     }
 
     public dispose(recusive: boolean): void {
@@ -159,7 +159,7 @@ export class Newline extends Node {
     }
 
     traverse_on_exit_scene(scene: Scene): void {
-        this.traverse_on_exit_scene(scene);
+        this.on_exit_scene(scene);
     }
 
     dispose(recusive: boolean): void { }

@@ -94,6 +94,11 @@ export class Scene extends LayoutContainer {
 
     protected focused_node: Node | undefined = undefined;
 
+    public get_focus_position(): Position | undefined {
+        if (this.focused_node === undefined) return undefined;
+        return this.focused_node?.get_focus_position?.();
+    }
+
     public focus_node(node: Node): void {
         if (node.focusable && this.focused_node !== node) {
             if (this.focused_node !== undefined) {
