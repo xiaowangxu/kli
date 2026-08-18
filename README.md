@@ -12,7 +12,10 @@ The current alpha supports:
 - DOM-like capture/target/bubble events with cancellation and pointer capture
 - SGR mouse position, hover, click, context-menu, drag, and wheel input
 - Focus traversal, terminal-cursor synchronization, and keyboard/wheel scrolling
-- Native `button`, `checkbox`, `input-box`, and `frame-buffer` JSX elements
+- Bracketed paste, host/OSC52 clipboard, cross-node selection, grapheme editing, undo/redo, and multiline textarea
+- Select, two-axis ScrollBox/ScrollBar, drag and drop, focus groups, layers, modal/menu/command palette, and virtual data
+- Form, navigation, layout, code/diff/Markdown, async-status, theme, semantic-tree, testing, and debug components
+- Optional Kitty/CSI-u keyboard, focus reporting, synchronized output, OSC8/10/11, Kitty Graphics, Sixel, and notification APIs
 
 ## Requirements
 
@@ -25,9 +28,11 @@ The current alpha supports:
 ```bash
 npm install
 npm start
+npm run demo:gallery
+npm run demo:workbench
 ```
 
-Press `Ctrl+C` to exit. Use the mouse wheel to move between the controls and framebuffer labs. `Tab`/`Shift+Tab` move focus; focused scroll containers also respond to arrows, `PageUp`, `PageDown`, `Home`, and `End`.
+Press `Ctrl+C` to exit. The gallery is the D01–D12 regression catalog. The Workbench is the all-in-one issue-triage demo with 1,000 items, editors, selection, drag/drop, scrollbars, overlays, sticky logs, Ctrl+P, and live renderer metrics. See [`docs/FEATURE_MATRIX.md`](./docs/FEATURE_MATRIX.md) for the full priority and acceptance matrix.
 
 ## Minimal app
 
@@ -72,7 +77,7 @@ Keyboard input is represented by `KeyInputEvent`:
 - `ctrl`, `shift`, and `alt` describe modifier keys.
 - `preventDefault()` cancels built-in focus, widget, or scrolling behavior.
 
-Terminal protocols generally do not expose key-release events, so keyboard events currently use `pressed: true`.
+Legacy terminals generally do not expose key-release events. Optional Kitty/CSI-u mode adds press/repeat/release events and preserves the raw sequence.
 
 `MouseInputEvent` includes zero-based `clientX`/`clientY`, movement, button state, modifiers, and related targets. `WheelInputEvent` adds `deltaX`/`deltaY`. Mouse input uses SGR coordinates and supports hover transitions, synthesized click/context-menu events, hit testing through clipped layouts, and pointer capture during drags.
 
@@ -82,7 +87,7 @@ Terminal protocols generally do not expose key-release events, so keyboard event
 
 ## Project status
 
-Kli is still an alpha, so API stability and broader terminal compatibility remain active work. The demo and automated suite cover the current renderer, interaction model, controls, scrolling, and color compositor.
+Kli remains an alpha API, but the renderer, editor, interaction, overlay, large-data, protocol, testing, and demo chains now have automated coverage. The detailed support matrix and terminal-specific caveats live in [`docs/FEATURE_MATRIX.md`](./docs/FEATURE_MATRIX.md).
 
 ## Development
 

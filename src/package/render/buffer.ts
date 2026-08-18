@@ -157,6 +157,11 @@ export class BufferPixel {
     public get is_bold() { return this.bold; }
     public get is_italic() { return this.italic; }
     public get is_underline() { return this.underline; }
+    public get is_empty() {
+        return this.content === undefined && this.color === undefined && this.bg_color === undefined &&
+            !this.bold && !this.italic && !this.underline;
+    }
+    public get isEmpty() { return this.is_empty; }
 
     public reset() {
         this.color = undefined;
@@ -180,6 +185,18 @@ export class BufferPixel {
     }
 
     public clone() { return new BufferPixel().copy(this); }
+
+    public equals(pixel: BufferPixel | undefined) {
+        if (pixel === undefined) return false;
+        const same_color = (a: Color | undefined, b: Color | undefined) =>
+            a === b || (a !== undefined && b !== undefined &&
+                a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a);
+        return same_color(this.color, pixel.color) &&
+            same_color(this.bg_color, pixel.bg_color) &&
+            this.bold === pixel.bold && this.italic === pixel.italic &&
+            this.underline === pixel.underline && this.span === pixel.span &&
+            this.content === pixel.content;
+    }
 
     public set_color(color?: Color) { this.color = copy_color(color); }
     public set_bg_color(color?: Color) { this.bg_color = copy_color(color); }
@@ -251,6 +268,25 @@ export class FrameBuffer {
         this._height = height;
         this.set_mask();
     }
+
+    public copy_from(source: FrameBuffer) {
+        this.resize(source.width, source.height);
+        for (let y = 0; y < source.height; y++) {
+            for (let x = 0; x < source.width; x++) {
+                this.pixels[y][x].copy(source.pixels[y][x]);
+            }
+        }
+        this.clear_color_value = copy_color(source.clear_color_value)!;
+        return this;
+    }
+    public copyFrom(source: FrameBuffer) { return this.copy_from(source); }
+
+    /** Read-only access for render diffing without allocating a clone. */
+    public peek_pixel(x: number, y: number): BufferPixel | undefined {
+        if (x < 0 || y < 0 || x >= this.width || y >= this.height) return undefined;
+        return this.pixels[y][x];
+    }
+    public peekPixel(x: number, y: number) { return this.peek_pixel(x, y); }
 
     public clear_color(color: Color) { this.clear_color_value = copy_color(color)!; }
     public clearColor(color: Color) { this.clear_color(color); }

@@ -33,6 +33,12 @@ export abstract class Node {
     protected _tab_index: number = 0;
     protected _hovered: boolean = false;
     protected _active: boolean = false;
+    protected _draggable: boolean = false;
+    protected _droppable: boolean = false;
+    protected _z_index: number = 0;
+    public role: string | undefined;
+    public aria_label: string | undefined;
+    public aria_description: string | undefined;
 
     protected readonly on_focused_event: Signal<() => void> = new Signal();
     protected readonly on_blured_event: Signal<() => void> = new Signal();
@@ -67,6 +73,23 @@ export abstract class Node {
 
     public get hovered() { return this._hovered; }
     public get active() { return this._active; }
+    public get draggable() { return this._draggable; }
+    public set draggable(value: boolean) { this._draggable = Boolean(value); }
+    public get droppable() { return this._droppable; }
+    public set droppable(value: boolean) { this._droppable = Boolean(value); }
+    public get z_index() { return this._z_index; }
+    public set z_index(value: number) {
+        const next = Math.floor(value ?? 0);
+        if (next === this._z_index) return;
+        this._z_index = next;
+        this.get_scene()?.notify_change();
+    }
+    public get zIndex() { return this.z_index; }
+    public set zIndex(value: number) { this.z_index = value; }
+    public get ariaLabel() { return this.aria_label; }
+    public set ariaLabel(value: string | undefined) { this.aria_label = value; }
+    public get ariaDescription() { return this.aria_description; }
+    public set ariaDescription(value: string | undefined) { this.aria_description = value; }
     public get focused() { return this.get_scene()?.get_focused_node() === this; }
 
     abstract draw(render: Renderer, force?: boolean): void;

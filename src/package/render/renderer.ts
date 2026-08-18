@@ -1,9 +1,11 @@
 import { WriteStream } from "node:tty";
+import { Buffer as NodeBuffer } from 'node:buffer';
 import { Color } from "../util/color.js";
 import { PixelTextStyle, Buffer, FrameBuffer } from "./buffer.js";
 import { Rect } from "../util/rect.js";
 import { Scene } from "../scene/scene.js";
 import { BorderType } from "../style/border_style.js";
+import { get_text_layout, split_graphemes_with_width } from '../text/text_layout.js';
 
 export const ANSI = {
     none: '',
@@ -11,6 +13,8 @@ export const ANSI = {
     clear: '\x1B[2J\x1B[3J\x1B[H\x1Bc',
     hide_cursor: '\x1B[?25l',
     show_cursor: '\x1B[?25h',
+    disable_auto_wrap: '\x1B[?7l',
+    enable_auto_wrap: '\x1B[?7h',
     move_to: (x: number, y: number) => `\x1B[${y + 1};${x + 1}H`,
 
     reset: '\x1B[0m',
@@ -294,6 +298,7 @@ export function calculate_char_region(char: string) {
 };
 
 export function calculate_char_width(char: string, ambiguous_width: number = 1) {
+    if (char.length === 0 || /^\p{Mark}+$/u.test(char)) return 0;
     const code_point = char.codePointAt(0)!;
     if (code_point <= 0x1F || (code_point >= 0x7F && code_point <= 0x9F)) {
         return 0;
@@ -301,7 +306,7 @@ export function calculate_char_width(char: string, ambiguous_width: number = 1) 
     if (code_point >= 0x300 && code_point <= 0x36F) {
         return 0;
     }
-    if (emoji_regax.test(char)) return 2;
+    if (emoji_regax.test(char) || char.includes('\u200d') || char.includes('\ufe0f') || char.includes('\u20e3')) return 2;
     const code = calculate_char_region(char);
     switch (code) {
         case 'F':
@@ -315,34 +320,49 @@ export function calculate_char_width(char: string, ambiguous_width: number = 1) 
 }
 
 export function calculate_string_width(str: string, ambiguous_width: number = 1) {
-    let width = 0;
-    const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' });
-    const chars = Array.from(segmenter.segment(str), s => s.segment);
-    for (const char of chars) {
-        const char_width = calculate_char_width(char, ambiguous_width);
-        width += char_width;
-    }
-    return width;
+    return get_text_layout(str, ambiguous_width).width;
 }
 
 export function split_string_with_width(str: string, ambiguous_width: number = 1) {
-    const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' });
-    return Array.from(segmenter.segment(str), s => ({ char: s.segment, width: calculate_char_width(s.segment, ambiguous_width) }));
+    return split_graphemes_with_width(str, ambiguous_width);
+}
+
+export interface RendererOptions {
+    alternateScreen?: boolean;
+    mouse?: boolean;
+    bracketedPaste?: boolean;
+    focusReporting?: boolean;
+    synchronizedOutput?: boolean;
+    keyboardProtocol?: 'legacy' | 'csi-u' | 'kitty';
+    /** Use framebuffer diff output for full-screen frames. */
+    dirtyDraw?: boolean;
 }
 
 export class Renderer {
 
     public readonly stream: WriteStream;
     protected readonly buffer: Buffer;
+    protected readonly previous_buffer = new Buffer();
     protected readonly render_callback: (render: Renderer) => void;
 
     protected scene: Scene | undefined;
+    protected initialized = false;
+    public readonly options: Required<RendererOptions>;
 
-    constructor(stream: WriteStream, render_callback: (render: Renderer) => void) {
+    constructor(stream: WriteStream, render_callback: (render: Renderer) => void, options: RendererOptions = {}) {
         this.stream = stream;
         this.buffer = new Buffer();
         this.buffer.resize(this.width, this.height);
         this.render_callback = render_callback;
+        this.options = {
+            alternateScreen: options.alternateScreen ?? true,
+            mouse: options.mouse ?? true,
+            bracketedPaste: options.bracketedPaste ?? true,
+            focusReporting: options.focusReporting ?? false,
+            synchronizedOutput: options.synchronizedOutput ?? false,
+            keyboardProtocol: options.keyboardProtocol ?? 'legacy',
+            dirtyDraw: options.dirtyDraw ?? true,
+        };
     }
 
     get width(): number {
@@ -355,11 +375,85 @@ export class Renderer {
     /** The active terminal framebuffer. Prefer the drawing helpers for normal widgets. */
     public get frame_buffer(): FrameBuffer { return this.buffer; }
     public get frameBuffer(): FrameBuffer { return this.buffer; }
+    public get dirty_draw(): boolean { return this.options.dirtyDraw; }
+    public set dirty_draw(value: boolean) {
+        if (this.options.dirtyDraw === value) return;
+        this.options.dirtyDraw = value;
+        this.has_previous_frame = false;
+        if (this.initialized) this.queue_render();
+    }
+    public get dirtyDraw(): boolean { return this.dirty_draw; }
+    public set dirtyDraw(value: boolean) { this.dirty_draw = value; }
     public create_frame_buffer(width: number, height: number) { return new FrameBuffer(width, height); }
     public createFrameBuffer(width: number, height: number) { return this.create_frame_buffer(width, height); }
 
+    public copy_to_clipboard_osc52(text: string, target: 'c' | 'p' | 's' | 'q' = 'c') {
+        if (!this.initialized || text.includes('\0')) return false;
+        const encoded = NodeBuffer.from(text, 'utf8').toString('base64');
+        this.stream.write(`\x1b]52;${target};${encoded}\x07`);
+        return true;
+    }
+    public copyToClipboardOSC52(text: string, target: 'c' | 'p' | 's' | 'q' = 'c') {
+        return this.copy_to_clipboard_osc52(text, target);
+    }
+
+    public set_window_title(title: string) {
+        if (title.includes('\x1b') || title.includes('\x07')) return false;
+        this.stream.write(`\x1b]0;${title}\x07`);
+        return true;
+    }
+    public setWindowTitle(title: string) { return this.set_window_title(title); }
+
+    public open_hyperlink(url: string, id?: string) {
+        if (/\x1b|\x07/.test(url) || (id !== undefined && /\x1b|\x07|;/.test(id))) return false;
+        this.stream.write(`\x1b]8;${id ? `id=${id}` : ''};${url}\x1b\\`);
+        return true;
+    }
+    public openHyperlink(url: string, id?: string) { return this.open_hyperlink(url, id); }
+    public close_hyperlink() { this.stream.write('\x1b]8;;\x1b\\'); }
+    public closeHyperlink() { this.close_hyperlink(); }
+
+    public notify_desktop(title: string, body = '') {
+        if (/\x1b|\x07/.test(title + body)) return false;
+        this.stream.write(`\x1b]777;notify;${title};${body}\x07`);
+        return true;
+    }
+    public notifyDesktop(title: string, body = '') { return this.notify_desktop(title, body); }
+    public query_theme_colors() { this.stream.write('\x1b]10;?\x07\x1b]11;?\x07'); }
+    public queryThemeColors() { this.query_theme_colors(); }
+
+    public write_kitty_graphics(data: Uint8Array | string, options: { id?: number; format?: 24 | 32 | 100; width?: number; height?: number } = {}) {
+        const encoded = typeof data === 'string' ? data : NodeBuffer.from(data).toString('base64');
+        const chunks = encoded.match(/.{1,4096}/g) ?? [''];
+        chunks.forEach((chunk, index) => {
+            const control = [
+                index === 0 ? `a=T` : '',
+                index === 0 ? `f=${options.format ?? 100}` : '',
+                index === 0 && options.id !== undefined ? `i=${options.id}` : '',
+                index === 0 && options.width !== undefined ? `s=${options.width}` : '',
+                index === 0 && options.height !== undefined ? `v=${options.height}` : '',
+                `m=${index < chunks.length - 1 ? 1 : 0}`,
+            ].filter(Boolean).join(',');
+            this.stream.write(`\x1b_G${control};${chunk}\x1b\\`);
+        });
+    }
+    public writeKittyGraphics(data: Uint8Array | string, options?: { id?: number; format?: 24 | 32 | 100; width?: number; height?: number }) { this.write_kitty_graphics(data, options); }
+    public write_sixel(payload: string) {
+        if (payload.includes('\x1b\\')) return false;
+        this.stream.write(`\x1bPq${payload}\x1b\\`);
+        return true;
+    }
+    public writeSixel(payload: string) { return this.write_sixel(payload); }
+
     protected render_queued: boolean = false;
     protected is_rendering: boolean = false;
+    protected has_previous_frame = false;
+    protected snapshot_current_frame = false;
+    protected frame_started_at = 0;
+    public frame_count = 0;
+    public last_frame_bytes = 0;
+    public last_dirty_cells = 0;
+    public last_frame_time = 0;
 
     public queue_render() {
         if (this.is_rendering) {
@@ -394,25 +488,53 @@ export class Renderer {
     }
 
     init() {
-        this.stream.write('\x1b[?1049h\x1b[?25l\x1b[?1003h\x1b[?1006h');
+        if (this.initialized) return;
+        this.initialized = true;
+        let sequence = '';
+        if (this.options.alternateScreen) sequence += '\x1b[?1049h';
+        sequence += '\x1b[?25l';
+        if (this.options.mouse) sequence += '\x1b[?1003h\x1b[?1006h';
+        if (this.options.bracketedPaste) sequence += '\x1b[?2004h';
+        if (this.options.focusReporting) sequence += '\x1b[?1004h';
+        if (this.options.keyboardProtocol === 'csi-u') sequence += '\x1b[>1u';
+        else if (this.options.keyboardProtocol === 'kitty') sequence += '\x1b[>31u';
+        this.stream.write(sequence);
         this.stream.on('resize', this.on_changed_listener);
         this.queue_render();
     }
 
     dispose() {
-        this.stream.write('\x1b[?1006l\x1b[?1003l\x1b[?1049l\x1b[?25h');
+        if (!this.initialized) return;
+        this.initialized = false;
+        let sequence = '';
+        if (this.options.keyboardProtocol !== 'legacy') sequence += '\x1b[<u';
+        if (this.options.focusReporting) sequence += '\x1b[?1004l';
+        if (this.options.bracketedPaste) sequence += '\x1b[?2004l';
+        if (this.options.mouse) sequence += '\x1b[?1006l\x1b[?1003l';
+        // Defensive restoration if rendering was interrupted after begin_render.
+        sequence += ANSI.enable_auto_wrap;
+        if (this.options.alternateScreen) sequence += '\x1b[?1049l';
+        sequence += '\x1b[?25h';
+        this.stream.write(sequence);
         this.stream.off('resize', this.on_changed_listener);
     }
 
     private rendered_content: string = '';
 
     protected begin_render(width: number, height: number): void {
+        this.frame_started_at = performance.now();
         this.is_rendering = true;
         this.render_queued = false;
         this.buffer.resize(width, height);
         this.buffer.clear();
-        this.rendered_content = ANSI.hide_cursor;
+        // A full framebuffer owns the bottom-right cell. With DECAWM enabled,
+        // writing that cell leaves some terminals (notably Windows Terminal) in
+        // a pending-wrap state and can scroll the alternate screen by one row.
+        // Absolute cell addressing means wrapping is never useful while a frame
+        // is emitted, so suppress it for the duration of the atomic frame.
+        this.rendered_content = `${this.options.synchronizedOutput ? '\x1b[?2026h' : ''}${ANSI.hide_cursor}${ANSI.disable_auto_wrap}`;
         this.mask_stack = [];
+        this.snapshot_current_frame = false;
     }
 
     protected mask_stack: Rect[] = [];
@@ -481,21 +603,17 @@ export class Renderer {
     }
 
     public draw_string(x: number, y: number, str: string, text_style?: PixelTextStyle, clear_style?: boolean) {
-        const segmenter = new Intl.Segmenter('zh', { granularity: 'grapheme' });
-        const chars = Array.from(segmenter.segment(str), s => s.segment);
-        const width = chars.length;
-        if (width === 0) return;
-        if (width === 1) {
-            const char_width = calculate_char_width(chars[0]);
-            this.draw_char(x, y, 1, 1, chars[0], char_width, text_style, clear_style);
+        const chars = get_text_layout(str).cells;
+        if (chars.length === 0) return;
+        if (chars.length === 1) {
+            this.draw_char(x, y, 1, 1, chars[0].char, chars[0].width, text_style, clear_style);
         }
         else {
             let total_width = 0;
-            for (const char of chars) {
-                const char_width = calculate_char_width(char);
-                if (x + total_width + char_width > this.width) break;
-                this.draw_char(x + total_width, y, 1, 1, char, char_width, text_style, clear_style);
-                total_width += char_width;
+            for (const cell of chars) {
+                if (x + total_width + cell.width > this.width) break;
+                this.draw_char(x + total_width, y, 1, 1, cell.char, cell.width, text_style, clear_style);
+                total_width += cell.width;
             }
         }
     }
@@ -530,10 +648,33 @@ export class Renderer {
 
     public execute_render(viewport: Rect, target: Rect, clear_screen: boolean, clear_empty: boolean, clear_screen_color?: Color, clear_empty_color?: Color) {
 
+        const full_surface =
+            viewport.x === 0 && viewport.y === 0 && viewport.width === this.width && viewport.height === this.height &&
+            target.x === 0 && target.y === 0 && target.width === this.width && target.height === this.height;
+        const full_frame = !clear_screen && !clear_empty && full_surface;
+        if (this.options.dirtyDraw && full_frame) {
+            this.execute_diff_render();
+            this.snapshot_current_frame = true;
+            return;
+        }
+
+        // A non-diff full frame owns every terminal cell. Repaint truly empty
+        // framebuffer cells with the Scene canvas instead of the terminal's default background.
+        if (full_frame) {
+            const canvas = this.scene?.theme.colors.canvas;
+            clear_screen = true;
+            clear_empty = true;
+            clear_screen_color ??= canvas;
+            clear_empty_color ??= canvas;
+        }
+
+        // Non-1:1 viewport rendering cannot use the screen-coordinate snapshot.
+        this.has_previous_frame = false;
+
         const render_rect = target.intersect(Rect.of(0, 0, this.width, this.height));
 
         // clear top
-        const clear_full_width_str = `${clear_screen_color ? ANSI.bg_rgb(clear_screen_color) : ANSI.none}${' '.repeat(this.width)}`;
+        const clear_full_width_str = `${clear_screen_color !== undefined ? ANSI.bg_rgb(clear_screen_color) : ANSI.none}${' '.repeat(this.width)}`;
         if (clear_screen) {
             this.rendered_content += ANSI.reset;
             for (let i = 0; i < (render_rect?.y ?? this.height); i++) {
@@ -565,9 +706,9 @@ export class Renderer {
 
         this.rendered_content += ANSI.move_to(render_rect.x, render_rect.y);
         let skip_span = 1;
-        const clear_empty_str = clear_empty_color ? `${ANSI.reset}${ANSI.bg_rgb(clear_empty_color)}` : '';
-        const clear_left_str = render_rect.x <= 0 ? undefined : `${clear_screen_color ? ANSI.bg_rgb(clear_screen_color) : ANSI.none}${' '.repeat(render_rect.x)}`;
-        const clear_right_str = (this.width - render_rect.x - render_rect.width) <= 0 ? undefined : `${clear_screen_color ? ANSI.bg_rgb(clear_screen_color) : ANSI.none}${' '.repeat(this.width - render_rect.x - render_rect.width)}`;
+        const clear_empty_str = clear_empty_color !== undefined ? `${ANSI.reset}${ANSI.bg_rgb(clear_empty_color)}` : '';
+        const clear_left_str = render_rect.x <= 0 ? undefined : `${clear_screen_color !== undefined ? ANSI.bg_rgb(clear_screen_color) : ANSI.none}${' '.repeat(render_rect.x)}`;
+        const clear_right_str = (this.width - render_rect.x - render_rect.width) <= 0 ? undefined : `${clear_screen_color !== undefined ? ANSI.bg_rgb(clear_screen_color) : ANSI.none}${' '.repeat(this.width - render_rect.x - render_rect.width)}`;
         for (const { x, y, pixel, newline, endline } of this.buffer.iterate(content_rect.x, content_rect.y, content_rect.width, content_rect.height)) {
             if (newline) {
                 if (clear_screen) {
@@ -586,7 +727,7 @@ export class Renderer {
                     );
                 }
             }
-            if (pixel === undefined) {
+            if (pixel === undefined || pixel.is_empty) {
                 this.rendered_content += `${clear_empty_str} `;
                 skip_span = 0;
             }
@@ -637,7 +778,68 @@ export class Renderer {
         }
     }
 
+    protected execute_diff_render() {
+        const previous_valid = this.has_previous_frame &&
+            this.previous_buffer.width === this.buffer.width &&
+            this.previous_buffer.height === this.buffer.height;
+        const canvas = this.scene?.theme.colors.canvas;
+        const changed = (x: number, y: number) => {
+            if (!previous_valid) return true;
+            const current = this.buffer.peek_pixel(x, y);
+            const previous = this.previous_buffer.peek_pixel(x, y);
+            if (!(current?.equals(previous) ?? previous === undefined)) return true;
+
+            // A changed wide glyph also dirties its continuation cell.
+            if (x > 0) {
+                const current_lead = this.buffer.peek_pixel(x - 1, y);
+                const previous_lead = this.previous_buffer.peek_pixel(x - 1, y);
+                const lead_changed = !(current_lead?.equals(previous_lead) ?? previous_lead === undefined);
+                if (lead_changed && Math.max(current_lead?.get_span() ?? 1, previous_lead?.get_span() ?? 1) > 1) return true;
+            }
+            return false;
+        };
+
+        for (let y = 0; y < this.buffer.height; y++) {
+            for (let column = 0; column < this.buffer.width;) {
+                if (!changed(column, y)) {
+                    column++;
+                    continue;
+                }
+
+                // Anchor each dirty cell. Terminals do not agree on every Unicode
+                // grapheme width; relying on the cursor advance from an earlier
+                // CJK/emoji cell can shift all following cells on the row.
+                this.rendered_content += ANSI.move_to(column, y);
+                const pixel = this.buffer.peek_pixel(column, y);
+                if (pixel === undefined || pixel.is_empty) {
+                    this.rendered_content += `${ANSI.reset}${canvas !== undefined ? ANSI.bg_rgb(canvas) : ''} ${ANSI.reset}`;
+                    column++;
+                    continue;
+                }
+
+                const span = Math.max(1, pixel.get_span());
+                if (span > 1) {
+                    // A terminal may measure a complex grapheme differently from
+                    // our Unicode layout (notably ZWJ emoji and keycaps). Paint the
+                    // whole logical span first, then place the grapheme at its
+                    // absolute origin. If the terminal renders it as one cell the
+                    // remaining cell keeps the intended background; if it renders
+                    // it as two cells the grapheme simply covers the prefill.
+                    this.rendered_content += pixel.get_styled_text_content(' '.repeat(span));
+                    this.rendered_content += ANSI.move_to(column, y);
+                }
+                this.rendered_content += pixel.get_styled_text_content(
+                    column + span > this.buffer.width ? ' ' : undefined,
+                );
+                column += span;
+            }
+        }
+    }
+
     protected async end_render() {
+        // Restore the caller's normal terminal behavior before exposing the
+        // caret or ending synchronized output. begin_render always disables it.
+        this.rendered_content += ANSI.enable_auto_wrap;
         const cursor = this.scene?.get_cursor_state();
         if (cursor?.visible && cursor.position.x >= 0 && cursor.position.y >= 0 &&
             cursor.position.x < this.width && cursor.position.y < this.height) {
@@ -646,7 +848,23 @@ export class Renderer {
         else {
             this.rendered_content += ANSI.hide_cursor;
         }
+        if (this.options.synchronizedOutput) this.rendered_content += '\x1b[?2026l';
+        let dirty = 0;
+        const previous_valid = this.has_previous_frame && this.previous_buffer.width === this.buffer.width && this.previous_buffer.height === this.buffer.height;
+        for (let y = 0; y < this.buffer.height; y++) for (let x = 0; x < this.buffer.width; x++) {
+            const current = this.buffer.peek_pixel(x, y);
+            const previous = previous_valid ? this.previous_buffer.peek_pixel(x, y) : undefined;
+            if (!previous_valid || !(current?.equals(previous) ?? previous === undefined)) dirty++;
+        }
+        this.last_dirty_cells = dirty;
+        this.last_frame_bytes = NodeBuffer.byteLength(this.rendered_content, 'utf8');
+        if (this.snapshot_current_frame) {
+            this.previous_buffer.copy_from(this.buffer);
+            this.has_previous_frame = true;
+        }
         await new Promise((resolve) => this.stream.write(this.rendered_content, resolve as any));
+        this.frame_count++;
+        this.last_frame_time = performance.now() - this.frame_started_at;
         this.is_rendering = false;
         if (this.render_queued) {
             this.render_queued = false;

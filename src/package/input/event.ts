@@ -1,4 +1,5 @@
 import type { Node } from '../node/node.js';
+import type { TextSelection } from './selection.js';
 
 export enum InputEventPhase {
     None = 0,
@@ -137,6 +138,7 @@ export interface KeyInputEventInit extends ComposeInputEventInit {
     code?: string;
     pressed?: boolean;
     repeat?: boolean;
+    raw?: string;
 }
 
 export class KeyInputEvent extends ComposeInputEvent {
@@ -146,6 +148,7 @@ export class KeyInputEvent extends ComposeInputEvent {
     public code = KeyInputEvent.#empty_key;
     public pressed = false;
     public repeat = false;
+    public raw = '';
 
     constructor(type: string = 'keydown', init: KeyInputEventInit = {}) {
         super(type, init);
@@ -153,6 +156,7 @@ export class KeyInputEvent extends ComposeInputEvent {
         this.code = init.code ?? KeyInputEvent.#empty_key;
         this.pressed = init.pressed ?? type !== 'keyup';
         this.repeat = init.repeat ?? false;
+        this.raw = init.raw ?? '';
     }
 
     public get keycode() { return this.code; }
@@ -177,6 +181,51 @@ export class KeyInputEvent extends ComposeInputEvent {
             (!this.repeat || event.repeat) &&
             event.ctrl === this.ctrl && event.shift === this.shift &&
             event.alt === this.alt && event.meta === this.meta;
+    }
+}
+
+export interface PasteInputEventInit extends InputEventInit {
+    text?: string;
+    raw?: string;
+    bytes?: Uint8Array;
+    encoding?: string;
+}
+
+/** A complete bracketed-paste payload, kept separate from individual key presses. */
+export class PasteInputEvent extends InputEvent {
+    public readonly text: string;
+    public readonly data: string;
+    public readonly raw: string;
+    public readonly bytes: Uint8Array;
+    public readonly encoding: string;
+
+    constructor(init: PasteInputEventInit = {}) {
+        super('paste', init);
+        this.text = init.text ?? '';
+        this.data = this.text;
+        this.raw = init.raw ?? this.text;
+        this.bytes = init.bytes?.slice() ?? new TextEncoder().encode(this.text);
+        this.encoding = init.encoding ?? 'utf-8';
+    }
+}
+
+export class ClipboardInputEvent extends InputEvent {
+    public text: string;
+
+    constructor(type: 'copy' | 'cut', text: string) {
+        super(type, { bubbles: true, cancelable: true });
+        this.text = text;
+    }
+}
+
+export class SelectionInputEvent extends InputEvent {
+    public readonly selection: TextSelection;
+    public readonly text: string;
+
+    constructor(selection: TextSelection, text: string) {
+        super('selection', { bubbles: false, cancelable: false });
+        this.selection = selection;
+        this.text = text;
     }
 }
 
@@ -242,6 +291,57 @@ export class MouseInputEvent extends ComposeInputEvent {
     }
 }
 
+/** Minimal DOM-like payload shared by drag sources and drop targets. */
+export class DragDataTransfer {
+    protected readonly values = new Map<string, string>();
+    public effectAllowed = 'all';
+    public dropEffect = 'move';
+
+    public setData(type: string, value: string) { this.values.set(type, value); }
+    public getData(type: string) { return this.values.get(type) ?? ''; }
+    public clearData(type?: string) {
+        if (type === undefined) this.values.clear();
+        else this.values.delete(type);
+    }
+    public get types() { return [...this.values.keys()]; }
+}
+
+export interface DragInputEventInit extends MouseInputEventInit {
+    dataTransfer: DragDataTransfer;
+    source: Node;
+    dropTarget?: Node;
+    cancelled?: boolean;
+}
+
+export class DragInputEvent extends MouseInputEvent {
+    public readonly dataTransfer: DragDataTransfer;
+    public readonly source: Node;
+    public readonly dropTarget: Node | undefined;
+    public readonly cancelled: boolean;
+
+    constructor(type: 'dragstart' | 'drag' | 'dragenter' | 'dragover' | 'dragleave' | 'drop' | 'dragend', init: DragInputEventInit) {
+        super(type, init);
+        this.dataTransfer = init.dataTransfer;
+        this.source = init.source;
+        this.dropTarget = init.dropTarget;
+        this.cancelled = init.cancelled ?? false;
+    }
+}
+
+export type KeyboardDragDirection = 'up' | 'down' | 'left' | 'right';
+
+/** Keyboard-equivalent reordering request, normally produced by Alt+Arrow. */
+export class KeyboardDragInputEvent extends InputEvent {
+    public readonly source: Node;
+    public readonly direction: KeyboardDragDirection;
+
+    constructor(source: Node, direction: KeyboardDragDirection) {
+        super('dragreorder', { bubbles: true, cancelable: true });
+        this.source = source;
+        this.direction = direction;
+    }
+}
+
 export interface WheelInputEventInit extends MouseInputEventInit {
     deltaX?: number;
     deltaY?: number;
@@ -271,6 +371,28 @@ export class FocusInputEvent extends InputEvent {
     }
 }
 
+export class TerminalFocusInputEvent extends InputEvent {
+    public readonly focused: boolean;
+    public readonly raw: string;
+    constructor(focused: boolean, raw: string) {
+        super(focused ? 'terminalfocus' : 'terminalblur', { bubbles: false, cancelable: false });
+        this.focused = focused;
+        this.raw = raw;
+    }
+}
+
+export class TerminalColorInputEvent extends InputEvent {
+    public readonly slot: 'foreground' | 'background';
+    public readonly value: string;
+    public readonly raw: string;
+    constructor(slot: 'foreground' | 'background', value: string, raw: string) {
+        super('terminalcolor', { bubbles: false, cancelable: false });
+        this.slot = slot;
+        this.value = value;
+        this.raw = raw;
+    }
+}
+
 export interface ValueInputEventInit<T> extends InputEventInit {
     value: T;
     data?: string;
@@ -282,7 +404,7 @@ export class ValueInputEvent<T = string> extends InputEvent {
     public readonly data: string | undefined;
     public readonly inputType: string | undefined;
 
-    constructor(type: 'beforeinput' | 'input' | 'change', init: ValueInputEventInit<T>) {
+    constructor(type: string, init: ValueInputEventInit<T>) {
         super(type, {
             bubbles: init.bubbles ?? true,
             cancelable: init.cancelable ?? type === 'beforeinput',

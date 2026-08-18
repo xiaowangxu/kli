@@ -1,9 +1,10 @@
-import Yoga, { Overflow, MeasureMode as YogaMeasureMode, Node as YogaNode } from "yoga-layout";
+import Yoga, { Display, Overflow, MeasureMode as YogaMeasureMode, Node as YogaNode } from "yoga-layout";
 import { LayoutContainer, LayoutLeaf } from "../layout/layout.js";
-import { NodeWithChildren } from "./node.js";
+import { Node, NodeWithChildren } from "./node.js";
 import { Newline, Text, TextContent } from "./text.js";
 import DefaultLayoutConfig from "../layout/config.js";
 import { Renderer, split_string_with_width } from "../render/renderer.js";
+import { is_word_break_after } from '../text/text_layout.js';
 import { Color } from "../util/color.js";
 import { BorderStyle, BorderType } from "../style/border_style.js";
 import { Scene } from "../scene/scene.js";
@@ -13,6 +14,7 @@ import { BoxStyle } from "../style/box_style.js";
 import { execute_shader, Shader } from "../style/shader.js";
 import { merge_text_styles, TextLayoutStyle, TextStyle } from "../style/text_style.js";
 import { log } from "../util/logger.js";
+import type { TextSelection } from '../input/selection.js';
 
 export class Container extends LayoutContainer<Container | TextContainer> implements BorderStyle, BoxStyle {
 
@@ -92,7 +94,10 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
         // render.draw_char(rect.x + 2, rect.y, 1, 1, `👩🏾‍👧🏼‍👦🏿`);
 
         if (this.layout_node.getOverflow() !== Overflow.Visible) render.push_mask(this.get_content_rect());
-        for (const child of this.children) {
+        const children = this.children.map((child, index) => ({ child, index }))
+            .sort((a, b) => a.child.z_index - b.child.z_index || a.index - b.index);
+        for (const { child } of children) {
+            if (child.layout_node.getDisplay() === Display.None) continue;
             child.draw(render, true);
         }
         if (this.layout_node.getOverflow() !== Overflow.Visible) render.pop_mask();
@@ -108,7 +113,7 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
         return Position.of(rect.x, rect.y);
     }
 
-    protected get_scroll_limit(): Position {
+    public get_scroll_limit(): Position {
         const viewport = this.get_content_rect();
         let content_width = 0;
         let content_height = 0;
@@ -122,16 +127,36 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
         );
     }
 
+    public get scroll_width() {
+        const viewport = this.get_content_rect();
+        return viewport.width + this.get_scroll_limit().x;
+    }
+    public get scroll_height() {
+        const viewport = this.get_content_rect();
+        return viewport.height + this.get_scroll_limit().y;
+    }
+    public get scroll_left() { return -this.offset.x; }
+    public set scroll_left(value: number) { this.scroll_to(value, this.scroll_top); }
+    public get scroll_top() { return -this.offset.y; }
+    public set scroll_top(value: number) { this.scroll_to(this.scroll_left, value); }
+
     public get_scroll_position(): Position {
-        return Position.of(-this.offset.x, -this.offset.y);
+        return Position.of(
+            Number.isFinite(this.offset.x) ? -this.offset.x : 0,
+            Number.isFinite(this.offset.y) ? -this.offset.y : 0,
+        );
     }
 
     public scroll_to(x: number, y: number): boolean {
         if (this.layout_node.getOverflow() !== Overflow.Scroll) return false;
         const limit = this.get_scroll_limit();
-        const next_x = Math.max(0, Math.min(Math.floor(x), limit.x));
-        const next_y = Math.max(0, Math.min(Math.floor(y), limit.y));
-        if (next_x === -this.offset.x && next_y === -this.offset.y) return false;
+        const safe_x = Number.isNaN(x) ? 0 : x;
+        const safe_y = Number.isNaN(y) ? 0 : y;
+        const next_x = Math.max(0, Math.min(Math.floor(safe_x), Number.isFinite(limit.x) ? limit.x : 0));
+        const next_y = Math.max(0, Math.min(Math.floor(safe_y), Number.isFinite(limit.y) ? limit.y : 0));
+        const current = this.get_scroll_position();
+        if (next_x === current.x && next_y === current.y &&
+            Number.isFinite(this.offset.x) && Number.isFinite(this.offset.y)) return false;
         this.offset.x = -next_x;
         this.offset.y = -next_y;
         this.get_scene()?.notify_change();
@@ -141,6 +166,28 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
     public scroll_by(x: number, y: number): boolean {
         return this.scroll_to(-this.offset.x + x, -this.offset.y + y);
     }
+
+    public scroll_child_into_view(node: Node): boolean {
+        let current: Node | undefined = node;
+        while (current !== undefined && current !== this) current = current.parent;
+        if (current !== this) return false;
+        const layout = node as Node & Partial<LayoutLeaf>;
+        if (typeof layout.get_rect !== 'function') return false;
+        const target = layout.get_rect();
+        const viewport = this.get_content_rect();
+        let dx = 0;
+        let dy = 0;
+        if (target.x < viewport.x) dx = target.x - viewport.x;
+        else if (target.x + target.width > viewport.x + viewport.width) {
+            dx = target.x + target.width - (viewport.x + viewport.width);
+        }
+        if (target.y < viewport.y) dy = target.y - viewport.y;
+        else if (target.y + target.height > viewport.y + viewport.height) {
+            dy = target.y + target.height - (viewport.y + viewport.height);
+        }
+        return this.scroll_by(dx, dy);
+    }
+    public scrollChildIntoView(node: Node) { return this.scroll_child_into_view(node); }
 
     public dispose(recusive: boolean): void {
         super.dispose(recusive);
@@ -174,6 +221,7 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
     protected _text_wrap: TextWrap = TextWrap.Wrap;
     protected _text_break: TextBreak = TextBreak.Word;
     protected _mask: boolean = false;
+    public selectable = true;
 
     get text_wrap(): TextWrap {
         return this._text_wrap;
@@ -328,9 +376,14 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
     }
 
     protected not_wrapped: boolean = true;
+    protected text_layout_revision = 0;
+    protected text_layout_cache_key = '';
+    protected text_layout_cache_result: { width: number; height: number } | undefined;
 
     protected update_text_spans() {
         this.not_wrapped = true;
+        this.text_layout_revision++;
+        this.text_layout_cache_result = undefined;
         this.text_spans = [];
         for (const text of this.children) {
             if (text instanceof Text) {
@@ -354,6 +407,100 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
     }
 
     public wrap_text_spans(max_width: number, max_height: number = Infinity, non_fit_char: string = '*') {
+        const key = `${this.text_layout_revision}:${max_width}:${max_height}:${non_fit_char}:${this.text_wrap}:${this.text_break}`;
+        if (key === this.text_layout_cache_key && this.text_layout_cache_result !== undefined) {
+            return this.text_layout_cache_result;
+        }
+        const result = this.layout_text_spans(max_width, max_height, non_fit_char);
+        this.text_layout_cache_key = key;
+        this.text_layout_cache_result = result;
+        return result;
+    }
+
+    /** Linear grapheme layout. Results stay cached until text/style/viewport changes. */
+    protected layout_text_spans(max_width: number, max_height: number = Infinity, non_fit_char: string = '*') {
+        this.not_wrapped = false;
+        const limit = Number.isFinite(max_width) ? Math.max(0, Math.floor(max_width)) : Number.POSITIVE_INFINITY;
+        const height_limit = Number.isFinite(max_height) ? Math.max(0, Math.floor(max_height)) : Number.POSITIVE_INFINITY;
+        for (const span of this.text_spans) {
+            span.x = -1;
+            span.y = -1;
+            span.override = undefined;
+        }
+
+        let index = 0;
+        let y = 0;
+        let result_width = 0;
+        while (index < this.text_spans.length && y < height_limit) {
+            if (this.text_spans[index].newline) {
+                index++;
+                y++;
+                continue;
+            }
+
+            const line_start = index;
+            const no_wrap = (this.text_spans[line_start].text_wrap ?? this.text_wrap) === TextWrap.NoWrap;
+            let cursor = line_start;
+            let used = 0;
+            let last_break = -1;
+            let overflow = false;
+            while (cursor < this.text_spans.length && !this.text_spans[cursor].newline) {
+                const span = this.text_spans[cursor];
+                if (cursor > line_start && used + span.width > limit) {
+                    overflow = true;
+                    break;
+                }
+                if (cursor === line_start && span.width > limit) {
+                    span.override = non_fit_char;
+                    used = Math.min(span.width, Math.max(1, limit));
+                    cursor++;
+                    overflow = cursor < this.text_spans.length && !this.text_spans[cursor].newline;
+                    break;
+                }
+                used += span.width;
+                cursor++;
+                const break_mode = span.text_break ?? this.text_break;
+                if (break_mode === TextBreak.All || (break_mode === TextBreak.Word &&
+                    span.content !== undefined && is_word_break_after(span.content, this.text_spans[cursor]?.content))) {
+                    last_break = cursor;
+                }
+                if (used >= limit && cursor < this.text_spans.length && !this.text_spans[cursor].newline) {
+                    overflow = true;
+                    break;
+                }
+            }
+
+            let line_end = cursor;
+            if (overflow && !no_wrap) {
+                const break_mode = this.text_spans[Math.max(line_start, cursor - 1)].text_break ?? this.text_break;
+                if (break_mode === TextBreak.Word && last_break > line_start) line_end = last_break;
+                if (line_end <= line_start) line_end = Math.min(line_start + 1, this.text_spans.length);
+            }
+
+            let x = 0;
+            for (let current = line_start; current < line_end; current++) {
+                const span = this.text_spans[current];
+                span.x = x;
+                span.y = y;
+                x += span.width;
+            }
+            result_width = Math.max(result_width, x);
+
+            if (overflow && no_wrap) {
+                if (line_end > line_start) this.text_spans[line_end - 1].override = '…';
+                while (cursor < this.text_spans.length && !this.text_spans[cursor].newline) cursor++;
+                index = cursor;
+            }
+            else index = line_end;
+
+            if (index < this.text_spans.length && this.text_spans[index].newline) index++;
+            y++;
+        }
+
+        return { width: result_width, height: Math.max(0, y) };
+    }
+
+    protected wrap_text_spans_legacy(max_width: number, max_height: number = Infinity, non_fit_char: string = '*') {
         this.not_wrapped = false;
 
         for (const span of this.text_spans) {
@@ -581,9 +728,36 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
             const { content, override, x, y, text_style } = span;
             if (x < 0 || y < 0) continue;
             if (override === undefined && content === undefined) continue;
-            render.draw_string(content_rect.x + x, content_rect.y + y, (override ?? content)!, text_style, false);
+            const screen_x = content_rect.x + x;
+            const screen_y = content_rect.y + y;
+            const selected = this.selectable && this.get_scene()?.is_text_cell_selected(screen_x, screen_y, span.width);
+            const style = selected ? {
+                ...text_style,
+                color: this.get_scene()?.selection_color ?? text_style?.color,
+                bg_color: this.get_scene()?.selection_bg_color,
+            } : text_style;
+            if (override !== undefined) render.draw_string(screen_x, screen_y, override, style, false);
+            else render.draw_char(screen_x, screen_y, 1, 1, content, span.width, style, false);
         }
         if (this.mask) render.pop_mask();
+    }
+
+    public get_selected_rows(selection: TextSelection) {
+        const content_rect = this.get_content_rect();
+        const rows = new Map<number, { x: number; end: number; text: string }>();
+        for (const span of this.text_spans) {
+            if (span.content === undefined || span.x < 0 || span.y < 0) continue;
+            const x = content_rect.x + span.x;
+            const y = content_rect.y + span.y;
+            if (!selection.intersectsCell(x, y, span.width)) continue;
+            const row = rows.get(y);
+            if (row === undefined) rows.set(y, { x, end: x + span.width, text: span.content });
+            else {
+                row.text += span.content;
+                row.end = x + span.width;
+            }
+        }
+        return [...rows].map(([y, row]) => ({ y, ...row }));
     }
 
     public get_rect(): Rect {

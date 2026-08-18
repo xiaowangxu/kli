@@ -4,6 +4,8 @@ import { solidPlugin } from 'esbuild-plugin-solid';
 export default defineConfig({
     entry: {
         dev: 'src/dev.tsx',
+        gallery: 'src/demos/gallery.tsx',
+        workbench: 'src/demos/workbench.tsx',
     },
     outDir: '.dev',
     format: ['esm'],

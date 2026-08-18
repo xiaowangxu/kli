@@ -1,7 +1,9 @@
-import { KeyInputEvent, MouseButton, MouseInputEvent, ValueInputEvent } from '../input/event.js';
+import { ClipboardInputEvent, InputEvent, KeyInputEvent, MouseButton, MouseInputEvent, PasteInputEvent, ValueInputEvent } from '../input/event.js';
+import { EditBuffer } from '../input/edit_buffer.js';
 import { Container } from '../node/container.js';
 import { CursorState } from '../node/node.js';
-import { Renderer, calculate_string_width, split_string_with_width } from '../render/renderer.js';
+import { Renderer, calculate_string_width } from '../render/renderer.js';
+import { get_text_layout } from '../text/text_layout.js';
 import { BorderStyleType } from '../style/border_style.js';
 import { Color } from '../util/color.js';
 import { Position } from '../util/position.js';
@@ -47,7 +49,7 @@ export class Button extends Container {
         this.get_scene()?.notify_change();
     }
 
-    public perform_default_action(event: KeyInputEvent | MouseInputEvent): void {
+    public perform_default_action(event: InputEvent): void {
         if (this.disabled) return;
         if (event instanceof KeyInputEvent && event.type === 'keydown' &&
             (event.key === 'Enter' || event.key === ' ')) {
@@ -100,7 +102,7 @@ export class Checkbox extends Button {
         this.get_scene()?.notify_change();
     }
 
-    public perform_default_action(event: KeyInputEvent | MouseInputEvent): void {
+    public perform_default_action(event: InputEvent): void {
         super.perform_default_action(event);
         if (!this.disabled && event instanceof MouseInputEvent && event.type === 'click') {
             this.checked = !this.checked;
@@ -118,13 +120,16 @@ export class Checkbox extends Button {
 
 /** Single-line editor integrated with Kli focus, events, mouse selection, and terminal cursor output. */
 export class InputBox extends Container {
-    protected _value = '';
+    protected readonly edit_buffer = new EditBuffer();
     protected _placeholder = '';
     protected committed_value = '';
-    protected caret = 0;
-    protected selection_anchor = 0;
     protected view_start = 0;
     protected dragging = false;
+
+    protected get caret() { return this.edit_buffer.caret; }
+    protected set caret(value: number) { this.edit_buffer.caret = value; }
+    protected get selection_anchor() { return this.edit_buffer.anchor; }
+    protected set selection_anchor(value: number) { this.edit_buffer.anchor = value; }
 
     public read_only = false;
     public password = false;
@@ -159,20 +164,11 @@ export class InputBox extends Container {
         });
     }
 
-    public get value(): string { return this._value; }
+    public get value(): string { return this.edit_buffer.value; }
     public set value(value: string | undefined) {
         const next = value ?? '';
-        if (next === this._value) return;
-        this._value = next;
-        const length = this.graphemes().length;
-        if (!this.focused) {
-            this.caret = length;
-            this.selection_anchor = length;
-        }
-        else {
-            this.caret = Math.min(this.caret, length);
-            this.selection_anchor = Math.min(this.selection_anchor, length);
-        }
+        if (next === this.value) return;
+        this.edit_buffer.setValue(next, this.focused);
         this.get_scene()?.notify_change();
     }
 
@@ -184,55 +180,48 @@ export class InputBox extends Container {
         this.get_scene()?.notify_change();
     }
 
-    public get selection_start() { return Math.min(this.caret, this.selection_anchor); }
-    public get selection_end() { return Math.max(this.caret, this.selection_anchor); }
+    public get selection_start() { return this.edit_buffer.selectionStart; }
+    public get selection_end() { return this.edit_buffer.selectionEnd; }
+    public get selected_text() { return this.edit_buffer.selectedText; }
 
     public set_selection_range(start: number, end: number = start) {
-        const length = this.graphemes().length;
-        this.selection_anchor = Math.max(0, Math.min(length, Math.floor(start)));
-        this.caret = Math.max(0, Math.min(length, Math.floor(end)));
+        this.edit_buffer.setSelectionRange(start, end);
         this.get_scene()?.notify_change();
     }
     public setSelectionRange(start: number, end: number = start) { this.set_selection_range(start, end); }
 
     protected graphemes(value: string = this.value) {
-        return split_string_with_width(value);
+        return (value === this.value ? this.edit_buffer.textLayout : get_text_layout(value)).cells;
     }
 
     protected update_caret_from_mouse(event: MouseInputEvent, extend: boolean) {
-        const chars = this.graphemes();
+        const layout = this.edit_buffer.textLayout;
         const content = this.get_content_rect();
         const local = Math.max(0, event.clientX - content.x);
-        let cells = 0;
-        let index = this.view_start;
-        for (; index < chars.length; index++) {
-            const midpoint = cells + chars[index].width / 2;
-            if (local < midpoint) break;
-            cells += chars[index].width;
-            if (local < cells) { index++; break; }
-        }
-        this.caret = index;
+        const start_column = this.password ? this.view_start : layout.columnAt(this.view_start);
+        this.caret = this.password
+            ? Math.min(layout.length, this.view_start + local)
+            : layout.indexAtColumn(start_column + local, 'nearest', this.view_start);
         if (!extend) this.selection_anchor = this.caret;
         this.get_scene()?.notify_change();
     }
 
     protected replace_selection(data: string, input_type: string) {
         if (this.read_only || this.disabled) return;
-        const current = this.graphemes();
-        const inserted = this.graphemes(data);
-        const start = this.selection_start;
-        const end = this.selection_end;
-        const allowed = this.max_length === undefined
-            ? inserted
-            : inserted.slice(0, Math.max(0, this.max_length - (current.length - (end - start))));
-        const next = [...current.slice(0, start), ...allowed, ...current.slice(end)].map((item) => item.char).join('');
-        const before = new ValueInputEvent('beforeinput', { value: next, data, inputType: input_type });
+        const replacement = this.edit_buffer.previewReplacement(data, this.max_length);
+        const before = new ValueInputEvent('beforeinput', {
+            value: replacement.value,
+            data: replacement.data,
+            inputType: input_type,
+        });
         if (!this.dispatchEvent(before)) return;
-        this._value = next;
-        this.caret = start + allowed.length;
-        this.selection_anchor = this.caret;
+        this.edit_buffer.applyReplacement(replacement);
         this.get_scene()?.notify_change();
-        this.dispatchEvent(new ValueInputEvent('input', { value: this.value, data, inputType: input_type }));
+        this.dispatchEvent(new ValueInputEvent('input', {
+            value: this.value,
+            data: replacement.data,
+            inputType: input_type,
+        }));
     }
 
     protected delete_backward() {
@@ -244,13 +233,18 @@ export class InputBox extends Container {
 
     protected delete_forward() {
         if (this.selection_start !== this.selection_end) return this.replace_selection('', 'deleteContentForward');
-        if (this.caret >= this.graphemes().length) return;
+        if (this.caret >= this.edit_buffer.length) return;
         this.selection_anchor = this.caret + 1;
         this.replace_selection('', 'deleteContentForward');
     }
 
-    public perform_default_action(event: KeyInputEvent | MouseInputEvent): void {
+    public perform_default_action(event: InputEvent): void {
         if (this.disabled) return;
+        if (event instanceof PasteInputEvent) {
+            this.replace_selection(event.text.replace(/\r?\n/g, ' '), 'insertFromPaste');
+            event.preventDefault();
+            return;
+        }
         if (event instanceof MouseInputEvent) {
             if (event.type === 'mousedown' && event.button === MouseButton.Primary) {
                 this.update_caret_from_mouse(event, event.shift);
@@ -267,15 +261,53 @@ export class InputBox extends Container {
             return;
         }
 
-        if (event.type !== 'keydown') return;
-        const length = this.graphemes().length;
+        if (!(event instanceof KeyInputEvent) || event.type !== 'keydown') return;
+        const length = this.edit_buffer.length;
+        const shortcut = event.key.toLowerCase();
+        if (event.ctrl && (shortcut === 'c' || shortcut === 'x')) {
+            if (this.selection_start === this.selection_end) return;
+            event.preventDefault();
+            if (this.password) return;
+            const clipboard_event = new ClipboardInputEvent(shortcut === 'c' ? 'copy' : 'cut', this.selected_text);
+            if (!this.dispatchEvent(clipboard_event)) return;
+            void this.get_scene()?.clipboard?.writeText(clipboard_event.text);
+            if (shortcut === 'x' && !this.read_only) this.replace_selection('', 'deleteByCut');
+            return;
+        }
+        if (event.ctrl && shortcut === 'v') {
+            const scene = this.get_scene();
+            if (this.read_only || scene?.clipboard === undefined) return;
+            event.preventDefault();
+            void scene.clipboard.readText().then((text) => {
+                if (text !== undefined && this.get_scene() === scene) {
+                    this.dispatchEvent(new PasteInputEvent({ text }));
+                }
+            });
+            return;
+        }
+        if (event.ctrl && (shortcut === 'y' || (shortcut === 'z' && event.shift))) {
+            if (this.edit_buffer.redo()) {
+                event.preventDefault();
+                this.get_scene()?.notify_change();
+                this.dispatchEvent(new ValueInputEvent('input', { value: this.value, inputType: 'historyRedo' }));
+            }
+            return;
+        }
+        if (event.ctrl && shortcut === 'z') {
+            if (this.edit_buffer.undo()) {
+                event.preventDefault();
+                this.get_scene()?.notify_change();
+                this.dispatchEvent(new ValueInputEvent('input', { value: this.value, inputType: 'historyUndo' }));
+            }
+            return;
+        }
         switch (event.key) {
             case 'ArrowLeft':
-                this.caret = event.ctrl ? 0 : Math.max(0, this.caret - 1);
+                this.caret = event.ctrl ? this.edit_buffer.wordBoundaryBackward() : Math.max(0, this.caret - 1);
                 if (!event.shift) this.selection_anchor = this.caret;
                 break;
             case 'ArrowRight':
-                this.caret = event.ctrl ? length : Math.min(length, this.caret + 1);
+                this.caret = event.ctrl ? this.edit_buffer.wordBoundaryForward() : Math.min(length, this.caret + 1);
                 if (!event.shift) this.selection_anchor = this.caret;
                 break;
             case 'Home':
@@ -286,8 +318,18 @@ export class InputBox extends Container {
                 this.caret = length;
                 if (!event.shift) this.selection_anchor = this.caret;
                 break;
-            case 'Backspace': this.delete_backward(); break;
-            case 'Delete': this.delete_forward(); break;
+            case 'Backspace':
+                if (event.ctrl && this.selection_start === this.selection_end) {
+                    this.selection_anchor = this.edit_buffer.wordBoundaryBackward();
+                }
+                this.delete_backward();
+                break;
+            case 'Delete':
+                if (event.ctrl && this.selection_start === this.selection_end) {
+                    this.selection_anchor = this.edit_buffer.wordBoundaryForward();
+                }
+                this.delete_forward();
+                break;
             case 'Enter':
                 if (this.value !== this.committed_value) {
                     this.committed_value = this.value;
@@ -295,7 +337,7 @@ export class InputBox extends Container {
                 }
                 break;
             default:
-                if (event.ctrl && event.key.toLowerCase() === 'a') {
+                if (event.ctrl && shortcut === 'a') {
                     this.selection_anchor = 0;
                     this.caret = length;
                 }
@@ -312,7 +354,7 @@ export class InputBox extends Container {
     protected ensure_caret_visible(width: number, chars: ReturnType<InputBox['graphemes']>) {
         this.view_start = Math.min(this.view_start, this.caret);
         const width_between = (start: number, end: number) =>
-            chars.slice(start, end).reduce((sum, item) => sum + item.width, 0);
+            this.password ? Math.max(0, end - start) : this.edit_buffer.textLayout.widthBetween(start, end);
         while (this.view_start < this.caret && width_between(this.view_start, this.caret) >= width) {
             this.view_start++;
         }
@@ -326,7 +368,9 @@ export class InputBox extends Container {
         const content = this.get_content_rect();
         const chars = this.graphemes();
         this.ensure_caret_visible(Math.max(1, content.width), chars);
-        const x = content.x + chars.slice(this.view_start, this.caret).reduce((sum, item) => sum + item.width, 0);
+        const x = content.x + (this.password
+            ? this.caret - this.view_start
+            : this.edit_buffer.textLayout.widthBetween(this.view_start, this.caret));
         return { position: Position.of(Math.min(content.x + Math.max(0, content.width - 1), x), content.y), visible: true };
     }
 
@@ -338,7 +382,9 @@ export class InputBox extends Container {
 
         const content = this.get_content_rect();
         if (content.width <= 0 || content.height <= 0) return;
-        const chars = this.graphemes(this.password ? '•'.repeat(this.graphemes().length) : this.value);
+        const chars = this.password
+            ? get_text_layout('•'.repeat(this.edit_buffer.length)).cells
+            : this.edit_buffer.textLayout.cells;
         this.ensure_caret_visible(content.width, chars);
         render.push_mask(content);
         render.push_opacity(this.opacity);

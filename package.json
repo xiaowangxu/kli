@@ -30,6 +30,8 @@
 		"dev": "tsup --watch --config tsup.config.dev.ts",
 		"build": "tsup --config tsup.config.build.ts",
 		"start": "tsup --config tsup.config.dev.ts && node .dev/dev.js",
+		"demo:gallery": "tsup --config tsup.config.dev.ts && node .dev/gallery.js",
+		"demo:workbench": "tsup --config tsup.config.dev.ts && node .dev/workbench.js",
 		"typecheck": "tsc --noEmit",
 		"test": "npm run build && node --test test/core.test.mjs"
 	},
