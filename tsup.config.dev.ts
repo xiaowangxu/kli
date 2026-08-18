@@ -5,8 +5,9 @@ export default defineConfig({
     entry: {
         dev: 'src/dev.tsx',
     },
+    outDir: '.dev',
     format: ['esm'],
-    dts: true,
+    dts: false,
     sourcemap: true,
     clean: true,
     target: 'node20',

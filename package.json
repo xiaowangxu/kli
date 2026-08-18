@@ -1,13 +1,19 @@
 {
 	"name": "kli",
 	"version": "1.0.0",
-	"description": "",
-	"keywords": [],
+	"description": "A Solid JSX renderer for building reactive terminal user interfaces.",
+	"keywords": [
+		"terminal",
+		"tui",
+		"solid-js",
+		"jsx",
+		"yoga-layout"
+	],
 	"author": "",
 	"license": "ISC",
 	"type": "module",
-	"main": "dist/index.cjs",
-	"module": "dist/index.js",
+	"main": "dist/index.mjs",
+	"module": "dist/index.mjs",
 	"types": "dist/index.d.ts",
 	"imports": {
 		"#renderer": "./src/package/solid/render.ts"
@@ -20,10 +26,15 @@
 		}
 	},
 	"scripts": {
-		"run": "node dist/dev.js",
+		"run": "node .dev/dev.js",
 		"dev": "tsup --watch --config tsup.config.dev.ts",
 		"build": "tsup --config tsup.config.build.ts",
-		"start": "tsup --config tsup.config.dev.ts && node dist/dev.js"
+		"start": "tsup --config tsup.config.dev.ts && node .dev/dev.js",
+		"typecheck": "tsc --noEmit",
+		"test": "npm run build && node --test test/core.test.mjs"
+	},
+	"engines": {
+		"node": ">=20"
 	},
 	"files": [
 		"dist"

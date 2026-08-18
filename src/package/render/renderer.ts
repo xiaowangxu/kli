@@ -1,6 +1,6 @@
 import { WriteStream } from "node:tty";
 import { Color } from "../util/color.js";
-import { PixelTextStyle, Buffer } from "./buffer.js";
+import { PixelTextStyle, Buffer, FrameBuffer } from "./buffer.js";
 import { Rect } from "../util/rect.js";
 import { Scene } from "../scene/scene.js";
 import { BorderType } from "../style/border_style.js";
@@ -352,6 +352,12 @@ export class Renderer {
         return this.stream.rows;
     }
 
+    /** The active terminal framebuffer. Prefer the drawing helpers for normal widgets. */
+    public get frame_buffer(): FrameBuffer { return this.buffer; }
+    public get frameBuffer(): FrameBuffer { return this.buffer; }
+    public create_frame_buffer(width: number, height: number) { return new FrameBuffer(width, height); }
+    public createFrameBuffer(width: number, height: number) { return this.create_frame_buffer(width, height); }
+
     protected render_queued: boolean = false;
     protected is_rendering: boolean = false;
 
@@ -365,10 +371,6 @@ export class Renderer {
             setImmediate(() => {
                 this.begin_render(this.width, this.height);
                 this.render_callback(this);
-                if (this.scene !== undefined) {
-                    const { x, y } = this.scene.get_focus_position() ?? { x: 2, y: 1 };
-                    this.rendered_content += ANSI.move_to(x, y);
-                }
                 this.end_render();
             });
         }
@@ -392,12 +394,13 @@ export class Renderer {
     }
 
     init() {
-        this.stream.write('\x1b[?1049h\x1b[?25l\x1b[?1006h');
+        this.stream.write('\x1b[?1049h\x1b[?25l\x1b[?1003h\x1b[?1006h');
         this.stream.on('resize', this.on_changed_listener);
+        this.queue_render();
     }
 
     dispose() {
-        this.stream.write('\x1b[?1006l\x1b[?1049l\x1b[?25h');
+        this.stream.write('\x1b[?1006l\x1b[?1003l\x1b[?1049l\x1b[?25h');
         this.stream.off('resize', this.on_changed_listener);
     }
 
@@ -407,7 +410,8 @@ export class Renderer {
         this.is_rendering = true;
         this.render_queued = false;
         this.buffer.resize(width, height);
-        this.rendered_content = '';
+        this.buffer.clear();
+        this.rendered_content = ANSI.hide_cursor;
         this.mask_stack = [];
     }
 
@@ -433,6 +437,34 @@ export class Renderer {
         else {
             this.buffer.set_mask(this.mask_stack[this.mask_stack.length - 1]);
         }
+    }
+
+    public push_opacity(opacity: number) { this.buffer.push_opacity(opacity); }
+    public pushOpacity(opacity: number) { this.push_opacity(opacity); }
+    public pop_opacity() { this.buffer.pop_opacity(); }
+    public popOpacity() { this.pop_opacity(); }
+
+    public draw_frame_buffer(
+        x: number,
+        y: number,
+        source: FrameBuffer,
+        source_x?: number,
+        source_y?: number,
+        source_width?: number,
+        source_height?: number,
+    ) {
+        this.buffer.draw_frame_buffer(x, y, source, source_x, source_y, source_width, source_height);
+    }
+    public drawFrameBuffer(
+        x: number,
+        y: number,
+        source: FrameBuffer,
+        sourceX?: number,
+        sourceY?: number,
+        sourceWidth?: number,
+        sourceHeight?: number,
+    ) {
+        this.draw_frame_buffer(x, y, source, sourceX, sourceY, sourceWidth, sourceHeight);
     }
 
     public fill(rect: Rect, bg_color?: Color) {
@@ -461,7 +493,7 @@ export class Renderer {
             let total_width = 0;
             for (const char of chars) {
                 const char_width = calculate_char_width(char);
-                if (x + total_width + char_width >= this.width) break;
+                if (x + total_width + char_width > this.width) break;
                 this.draw_char(x + total_width, y, 1, 1, char, char_width, text_style, clear_style);
                 total_width += char_width;
             }
@@ -606,6 +638,14 @@ export class Renderer {
     }
 
     protected async end_render() {
+        const cursor = this.scene?.get_cursor_state();
+        if (cursor?.visible && cursor.position.x >= 0 && cursor.position.y >= 0 &&
+            cursor.position.x < this.width && cursor.position.y < this.height) {
+            this.rendered_content += `${ANSI.move_to(cursor.position.x, cursor.position.y)}${ANSI.show_cursor}`;
+        }
+        else {
+            this.rendered_content += ANSI.hide_cursor;
+        }
         await new Promise((resolve) => this.stream.write(this.rendered_content, resolve as any));
         this.is_rendering = false;
         if (this.render_queued) {

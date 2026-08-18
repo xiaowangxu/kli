@@ -20,6 +20,7 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
     protected _border_type: BorderType | undefined;
     protected _bg_color: Color | undefined;
     protected _bg_shader: Shader | undefined;
+    protected _opacity: number = 1;
     public readonly offset: Position = Position.of(0, 0);
 
     get border_color(): Color | undefined {
@@ -50,6 +51,13 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
         this._bg_shader = v;
         this.get_scene()?.notify_change();
     }
+    get opacity(): number { return this._opacity; }
+    set opacity(value: number | undefined) {
+        const next = Math.max(0, Math.min(1, value ?? 1));
+        if (next === this._opacity) return;
+        this._opacity = next;
+        this.get_scene()?.notify_change();
+    }
 
     public get_scene(): Scene | undefined {
         return this.parent?.get_scene();
@@ -62,7 +70,7 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
         this.layout_node.markLayoutSeen();
 
         const rect = this.get_rect();
-        if (this.bg_color === undefined) render.fill(rect);
+        render.push_opacity(this.opacity);
 
         const left = this.layout_node.getComputedBorder(Yoga.EDGE_LEFT);
         const top = this.layout_node.getComputedBorder(Yoga.EDGE_TOP);
@@ -88,10 +96,50 @@ export class Container extends LayoutContainer<Container | TextContainer> implem
             child.draw(render, true);
         }
         if (this.layout_node.getOverflow() !== Overflow.Visible) render.pop_mask();
+        render.pop_opacity();
     }
 
     public get_inner_offset(): Position {
         return this.offset;
+    }
+
+    public get_focus_position(): Position {
+        const rect = this.get_content_rect();
+        return Position.of(rect.x, rect.y);
+    }
+
+    protected get_scroll_limit(): Position {
+        const viewport = this.get_content_rect();
+        let content_width = 0;
+        let content_height = 0;
+        for (const child of this.children) {
+            content_width = Math.max(content_width, child.layout_node.getComputedLeft() + child.layout_node.getComputedWidth());
+            content_height = Math.max(content_height, child.layout_node.getComputedTop() + child.layout_node.getComputedHeight());
+        }
+        return Position.of(
+            Math.max(0, content_width - viewport.width),
+            Math.max(0, content_height - viewport.height),
+        );
+    }
+
+    public get_scroll_position(): Position {
+        return Position.of(-this.offset.x, -this.offset.y);
+    }
+
+    public scroll_to(x: number, y: number): boolean {
+        if (this.layout_node.getOverflow() !== Overflow.Scroll) return false;
+        const limit = this.get_scroll_limit();
+        const next_x = Math.max(0, Math.min(Math.floor(x), limit.x));
+        const next_y = Math.max(0, Math.min(Math.floor(y), limit.y));
+        if (next_x === -this.offset.x && next_y === -this.offset.y) return false;
+        this.offset.x = -next_x;
+        this.offset.y = -next_y;
+        this.get_scene()?.notify_change();
+        return true;
+    }
+
+    public scroll_by(x: number, y: number): boolean {
+        return this.scroll_to(-this.offset.x + x, -this.offset.y + y);
     }
 
     public dispose(recusive: boolean): void {
@@ -573,6 +621,7 @@ export class TextContainer extends NodeWithChildren<Text | Newline> implements L
                 c.dispose(true);
             }
         }
+        this.dispose_events();
         this.layout_node.unsetMeasureFunc();
         this.layout_node.free();
     }

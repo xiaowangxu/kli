@@ -101,6 +101,7 @@ export class Text extends NodeWithChildren<Text | TextContent | Newline> impleme
                 c.dispose(true);
             }
         }
+        this.dispose_events();
     }
 
 }
@@ -139,7 +140,7 @@ export class TextContent extends Node {
     }
 
     public dispose(recusive: boolean): void {
-
+        this.dispose_events();
     }
 
 }
@@ -162,6 +163,6 @@ export class Newline extends Node {
         this.on_exit_scene(scene);
     }
 
-    dispose(recusive: boolean): void { }
+    dispose(recusive: boolean): void { this.dispose_events(); }
 
 }

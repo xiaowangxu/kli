@@ -9,6 +9,18 @@ import { Renderer } from '../render/renderer.js';
 import { Rect } from '../util/rect.js';
 import { JSXElement } from 'solid-js';
 import { log } from '../util/logger.js';
+import { Button, Checkbox, InputBox } from '../component/controls.js';
+import { FrameBufferView } from '../component/frame_buffer_view.js';
+
+function input_event_property(name: string): { type: string, capture: boolean } | undefined {
+    if (!name.startsWith('on_')) return undefined;
+    let event_name = name.slice(3);
+    const capture = event_name.endsWith('_capture');
+    if (capture) event_name = event_name.slice(0, -'_capture'.length);
+    if (event_name === 'focused') event_name = 'focus';
+    if (event_name === 'blured') event_name = 'blur';
+    return { type: event_name.replaceAll('_', ''), capture };
+}
 
 export type KliNode = Node | NodeWithChildren<Node | (Node & (LayoutLeaf | LayoutNode))>;
 
@@ -32,6 +44,10 @@ const {
                 case 'text-box': return new TextContainer();
                 case 'text': return new Text();
                 case 'br': return new Newline();
+                case 'button': return new Button();
+                case 'checkbox': return new Checkbox();
+                case 'input-box': return new InputBox();
+                case 'frame-buffer': return new FrameBufferView();
                 default: throw new Error(`unknown tag <${tag} />`);
             }
         },
@@ -49,16 +65,13 @@ const {
             return node instanceof TextContent;
         },
         setProperty: function <T>(node: KliNode, name: string, value: T, prev?: T | undefined): void {
-            if (name.startsWith('on_')) {
-                if (prev !== undefined) {
-                    const off = `off${name.slice(2)}`;
-                    if (off in node) {
-                        (node as any)[off](prev);
-                    }
-                }
-                if (name in node) {
-                    (node as any)[name](value);
-                }
+            const event_property = input_event_property(name);
+            if (event_property !== undefined) {
+                node.set_event_handler(
+                    event_property.type,
+                    typeof value === 'function' ? value as any : undefined,
+                    event_property.capture,
+                );
             }
             else if (name in node) {
                 (node as any)[name] = value;

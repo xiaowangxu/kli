@@ -195,6 +195,7 @@ export abstract class LayoutContainer<Children extends Node & (LayoutLeaf | Layo
                 c.dispose(true);
             }
         }
+        this.dispose_events();
         this.layout_node.free();
     }
 
